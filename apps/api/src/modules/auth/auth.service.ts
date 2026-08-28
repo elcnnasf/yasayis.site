@@ -15,6 +15,7 @@ import type {
   RegisterInput,
   ResetPasswordInput,
   SessionUserDto,
+  SetPhoneInput,
   UpdateOwnRolesInput,
   VerifyOtpInput,
 } from '@yasayis/shared';
@@ -173,6 +174,35 @@ export class AuthService {
     await this.otp.verify(input.phone, input.code, 'PHONE_VERIFY');
     const user = await this.repo.markPhoneVerified(userId, input.phone);
     return toAuthUser(user);
+  }
+
+  /**
+   * Nömrəni TƏSDİQSİZ təyin edir.
+   *
+   * `phoneVerifiedAt` QOYULMUR — nişan qazanılmır, sadəcə əlaqə nömrəsi
+   * yazılır. Bu, elan sahibinin tələbə ilə telefonla əlaqə saxlaya bilməsi
+   * üçün lazımdır; SMS provayderi olmayanda nömrəni yazmağın başqa yolu yoxdur.
+   *
+   * Nömrənin başqa hesaba bağlı olmaması yenə də yoxlanılır — bir nömrə bir
+   * hesab qaydası təsdiqdən asılı deyil.
+   */
+  async setPhone(userId: string, input: SetPhoneInput): Promise<AuthUser> {
+    const owner = await this.repo.findByPhone(input.phone);
+    if (owner && owner.id !== userId) {
+      throw new ConflictException('Bu nömrə başqa hesaba bağlıdır');
+    }
+
+    const updated = await this.repo.update(userId, { phone: input.phone });
+    return toAuthUser(updated);
+  }
+
+  /** Nömrəni silir — elanlarda "Mesaj yaz" seçiminə qayıdılır. */
+  async clearPhone(userId: string): Promise<AuthUser> {
+    const updated = await this.repo.update(userId, {
+      phone: null,
+      phoneVerifiedAt: null,
+    });
+    return toAuthUser(updated);
   }
 
   /** Telefon + OTP ilə parolsuz giriş. */

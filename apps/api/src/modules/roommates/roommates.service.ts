@@ -97,7 +97,23 @@ export class RoommatesService {
       this.repo.findProfile(otherUserId),
     ]);
 
-    if (!viewerRow) throw new BadRequestException('Əvvəlcə öz profilinizi tamamlayın');
+    /*
+      Profil yarımçıqdırsa XƏTA ATILMIR.
+
+      Otaq yoldaşı bölməsi profilsiz də işləməlidir — profil yalnız uyğunluq
+      FAİZİNİ dəqiqləşdirir, bölməyə giriş şərti deyil. Əvvəl burada xəta
+      atılırdı və client onu udurdu, amma nəticədə istifadəçi heç bir izah
+      görmürdü. İndi boş nəticə qaytarılır: ekran "faiz hesablanmayıb" deyir.
+    */
+    if (!viewerRow) {
+      return {
+        score: 0,
+        explanation: 'Uyğunluq faizi profilinizi tamamladıqdan sonra hesablanır.',
+        factors: [],
+        matches: [],
+        difference: null,
+      };
+    }
     if (!otherRow) throw new NotFoundException('Profil tapılmadı');
 
     const scorer = await this.weights.getScorer();

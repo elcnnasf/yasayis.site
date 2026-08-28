@@ -21,6 +21,7 @@ import {
   registerSchema,
   requestOtpSchema,
   resetPasswordSchema,
+  setPhoneSchema,
   updateOwnRolesSchema,
   verifyOtpSchema,
   type AuthResultDto,
@@ -184,6 +185,35 @@ export class AuthController {
     this.assertPhoneAuth();
     const user = await this.auth.verifyPhone(actor.id, dto as never);
     // Token yenilənir ki, `phoneVerified` bayrağı dərhal işləsin.
+    return this.startSession(user, req, res);
+  }
+
+  /**
+   * Nömrəni təsdiqsiz təyin etmək / silmək.
+   *
+   * `assertPhoneAuth()` BURADA ÇAĞIRILMIR: bu axının SMS-ə heç bir aidiyyatı
+   * yoxdur və məhz provayder olmayanda lazımdır.
+   */
+  @Post('phone/set')
+  @HttpCode(HttpStatus.OK)
+  async setPhone(
+    @CurrentUser() actor: AuthUser,
+    @Body(zodBody(setPhoneSchema)) dto: unknown,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResultDto> {
+    const user = await this.auth.setPhone(actor.id, dto as never);
+    return this.startSession(user, req, res);
+  }
+
+  @Post('phone/clear')
+  @HttpCode(HttpStatus.OK)
+  async clearPhone(
+    @CurrentUser() actor: AuthUser,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<AuthResultDto> {
+    const user = await this.auth.clearPhone(actor.id);
     return this.startSession(user, req, res);
   }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
-import { GraduationCap, Info, MapPin, ShieldAlert, UserRound, Wallet } from 'lucide-react';
+import { GraduationCap, Info, MapPin, Send, ShieldAlert, UserRound, Wallet } from 'lucide-react';
 import {
   formatBudgetRange,
   lifestyleLabels,
@@ -14,9 +14,10 @@ import {
   type PublicStudentProfileDto,
 } from '@yasayis/shared';
 import { api, ApiRequestError } from '@/lib/api-client';
-import { ContactButton } from '@/components/shared/contact-button';
+import { MessageDialog } from '@/components/messages/message-dialog';
 import { ReportButton } from '@/components/shared/report-dialog';
 import { VerifiedBadge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Panel, Skeleton, Well } from '@/components/ui/card';
 import { MatchBar, MatchRing } from '@/components/ui/progress';
 
@@ -33,7 +34,7 @@ import { MatchBar, MatchRing } from '@/components/ui/progress';
 export function RoommateProfile({ userId }: { userId: string }) {
   const [profile, setProfile] = useState<PublicStudentProfileDto | null>(null);
   const [match, setMatch] = useState<MatchBreakdownDto | null>(null);
-  const [phone, setPhone] = useState<string | null>(null);
+  const [writing, setWriting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,9 +64,6 @@ export function RoommateProfile({ userId }: { userId: string }) {
         if (!cancelled) setMatch(res);
       })
       .catch(() => undefined);
-
-    // Telefon nömrəsi ayrıca gəlmir; hazırda yalnız elan detalında açılır.
-    setPhone(null);
 
     // Təmizləmə YOX İDİ: `cancelled` bayrağı qurulurdu, amma heç vaxt
     // `true` olmurdu. Nəticədə istifadəçi cavab gəlməmiş başqa profilə
@@ -196,13 +194,33 @@ export function RoommateProfile({ userId }: { userId: string }) {
 
       <aside className="flex flex-col gap-4 lg:sticky lg:top-20">
         <Panel className="flex flex-col gap-4 p-5">
-          {/* `listingId` yoxdur — otaq yoldaşı əlaqəsi uyğunlaşmadan sonra
-              qurulur, ona görə düymə burada həmişə söndürülüdür. */}
-          <ContactButton
-            canReveal={phone !== null}
-            message={roommateContactMessage(profile.fullName)}
-            signInHint="Əlaqə üçün əvvəlcə uyğunlaşma təklifi göndərin."
-          />
+          {/*
+            Otaq yoldaşı profilində nömrə HEÇ VAXT açılmır — profil məxfiliyi
+            elandan sərtdir. Ona görə əlaqə yolu mesajdır.
+
+            Əvvəl burada söndürülü "Əlaqə saxla" düyməsi dayanırdı və heç bir
+            halda işə düşmürdü: nömrə gəlmədiyi üçün `canReveal` həmişə `false`
+            idi. Yəni profilə baxan adamın əlaqə qurmaq üçün heç bir yolu yox
+            idi.
+          */}
+          {writing ? (
+            <MessageDialog
+              recipientId={userId}
+              recipientName={profile.fullName}
+              defaultBody={roommateContactMessage(profile.fullName)}
+              onClose={() => setWriting(false)}
+            />
+          ) : (
+            <div className="flex flex-col gap-2">
+              <Button size="lg" fullWidth onClick={() => setWriting(true)}>
+                <Send className="size-5" aria-hidden />
+                Mesaj yaz
+              </Button>
+              <p className="text-center text-2xs text-stone-500">
+                Cavab «Mesajlar» bölməsinə gələcək.
+              </p>
+            </div>
+          )}
 
           <Well className="flex items-start gap-2.5 border border-warning-100 bg-warning-50">
             <ShieldAlert className="mt-0.5 size-4 shrink-0 text-warning-600" aria-hidden />

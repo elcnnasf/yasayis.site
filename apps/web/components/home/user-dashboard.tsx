@@ -59,6 +59,8 @@ export function UserDashboard({ user }: { user: SessionUserDto }) {
   const [roommates, setRoommates] = useState<RoommateCardDto[] | null>(null);
   const [alerts, setAlerts] = useState<SearchAlertRow[]>([]);
   const [recent, setRecent] = useState<RecentListing[]>([]);
+  /** Siyahı doğrudan profilə görə süzülübmü — başlıqdakı izah buna baxır. */
+  const [personalised, setPersonalised] = useState(false);
 
   useEffect(() => {
     setRecent(getRecentlyViewed());
@@ -76,19 +78,57 @@ export function UserDashboard({ user }: { user: SessionUserDto }) {
       .catch(() => setAlerts([]));
   }, [user.isStudent]);
 
-  // Elanlar profildəki büdcə və şəhərə görə süzülür — "sənə uyğun" sözü
-  // yalnız filtr həqiqətən tətbiq olunanda doğrudur.
+  /*
+    Elanlar əvvəlcə profildəki şəhər və büdcəyə görə süzülür.
+
+    SÜZGƏC BOŞ QAYIDANDA GERİ ÇƏKİLİRİK. Səbəb: platformada elan sayı hələ
+    azdır və istifadəçinin şəhəri/büdcəsi ilə üst-üstə düşən elan olmaya
+    bilər. Belə halda boş rəf göstərmək "saytda heç nə yoxdur" təəssüratı
+    yaradır, halbuki yeni elanlar var — sadəcə onun filtrinə düşmür.
+    Ona görə filtr nəticəsizsə ən yeni elanlar göstərilir və başlıqdakı
+    izah da buna uyğun dəyişir (aşağıda `personalised`).
+
+    `forStudents` filtri də götürüldü: sahibi bu qutunu işarələməyəndə elan
+    ümumiyyətlə görünmürdü.
+  */
   useEffect(() => {
+    let cancelled = false;
+    const filters = {
+      cityId: profile?.cityId ?? undefined,
+      priceMax: profile?.budgetMax ?? undefined,
+    };
+    const hasAnyFilter = Boolean(filters.cityId || filters.priceMax);
+
     api
       .get<PagedResult<ListingSummaryDto>>('/listings', {
-        cityId: profile?.cityId ?? undefined,
-        priceMax: profile?.budgetMax ?? undefined,
-        forStudents: true,
+        ...filters,
         sort: 'yeni',
         limit: 5,
       })
-      .then((res) => setListings(res.items))
-      .catch(() => setListings([]));
+      .then(async (res) => {
+        if (cancelled) return;
+
+        if (res.items.length > 0 || !hasAnyFilter) {
+          setListings(res.items);
+          setPersonalised(res.items.length > 0 && hasAnyFilter);
+          return;
+        }
+
+        const fallback = await api
+          .get<PagedResult<ListingSummaryDto>>('/listings', { sort: 'yeni', limit: 5 })
+          .catch(() => null);
+        if (cancelled) return;
+
+        setListings(fallback?.items ?? []);
+        setPersonalised(false);
+      })
+      .catch(() => {
+        if (!cancelled) setListings([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [profile?.cityId, profile?.budgetMax]);
 
   useEffect(() => {
@@ -108,7 +148,7 @@ export function UserDashboard({ user }: { user: SessionUserDto }) {
     <ListingsSection
       listings={listings}
       goal={goal}
-      hasFilters={Boolean(profile?.cityId || profile?.budgetMax)}
+      personalised={personalised}
     />
   );
   const roommatesBlock = user.isStudent ? (
@@ -155,21 +195,50 @@ function Greeting({
     <header>
       <h1 className="text-h1 text-stone-900">Bu gün nə axtarırsan?</h1>
 
-      <div className="mt-5 flex flex-wrap gap-2">
-        <ButtonLink href="/axtaris" size="md">
-          <Search className="size-4" aria-hidden />
-          Ev / otaq tap
+      {/*
+        Mobil-də üç düymə YAN-YANA durur, alt-alta yox.
+
+        Əvvəl `flex-wrap` idi və uzun etiketlər ("Otaq yoldaşı tap") dar ekrana
+        sığmayıb hər birini ayrı sətrə salırdı — ekranın yuxarısı üç sətir
+        düymə ilə dolurdu və altındakı məzmun görünmürdü.
+
+        İki dəyişiklik: hər düymə `flex-1` ilə bərabər en tutur, etiketlər isə
+        mobildə qısalır. `sm:`-dən yuxarı hər şey əvvəlki kimidir.
+      */}
+      <div className="mt-5 flex gap-2 sm:flex-wrap">
+        <ButtonLink
+          href="/axtaris"
+          size="md"
+          className="min-w-0 flex-1 px-2 text-sm sm:flex-none sm:px-5 sm:text-body"
+        >
+          <Search className="size-4 shrink-0" aria-hidden />
+          <span className="truncate sm:hidden">Ev tap</span>
+          <span className="hidden sm:inline">Ev / otaq tap</span>
         </ButtonLink>
+
         {user.isStudent && (
-          <ButtonLink href="/otaq-yoldasi" size="md" variant="secondary">
-            <Users className="size-4" aria-hidden />
-            Otaq yoldaşı tap
+          <ButtonLink
+            href="/otaq-yoldasi"
+            size="md"
+            variant="secondary"
+            className="min-w-0 flex-1 px-2 text-sm sm:flex-none sm:px-5 sm:text-body"
+          >
+            <Users className="size-4 shrink-0" aria-hidden />
+            <span className="truncate sm:hidden">Yoldaş tap</span>
+            <span className="hidden sm:inline">Otaq yoldaşı tap</span>
           </ButtonLink>
         )}
+
         {user.isOwner && (
-          <ButtonLink href="/elan/yeni" size="md" variant="tertiary">
-            <Plus className="size-4" aria-hidden />
-            Elan yerləşdir
+          <ButtonLink
+            href="/elan/yeni"
+            size="md"
+            variant="tertiary"
+            className="min-w-0 flex-1 px-2 text-sm sm:flex-none sm:px-5 sm:text-body"
+          >
+            <Plus className="size-4 shrink-0" aria-hidden />
+            <span className="truncate sm:hidden">Elan ver</span>
+            <span className="hidden sm:inline">Elan yerləşdir</span>
           </ButtonLink>
         )}
       </div>
@@ -189,20 +258,21 @@ function Greeting({
 function ListingsSection({
   listings,
   goal,
-  hasFilters,
+  personalised,
 }: {
   listings: ListingSummaryDto[] | null;
   goal: LookingFor | null;
-  hasFilters: boolean;
+  /** true = siyahı profilə görə süzülüb; false = sadəcə ən yeni elanlar. */
+  personalised: boolean;
 }) {
   return (
     <section>
       <SectionHead
         title="Sənə uyğun elanlar"
         note={
-          hasFilters
+          personalised
             ? 'Profilindəki şəhər və büdcəyə görə süzülüb.'
-            : 'Profilini tamamlasan, siyahı sənə uyğunlaşacaq.'
+            : 'Ən yeni elanlar. Profilini tamamlasan, siyahı sənə uyğunlaşacaq.'
         }
         href={goal === LookingFor.OTAQ ? '/axtaris?hasVacantRoom=true' : '/axtaris'}
       />

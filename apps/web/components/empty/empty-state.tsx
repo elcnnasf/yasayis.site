@@ -144,11 +144,17 @@ export function NoRoommatesFound({
     <EmptyState
       icon={Users}
       title="Hazırda uyğun profil tapılmadı."
-      description="Profil məlumatlarını tamamla ki, uyğunluq daha dəqiq hesablansın. Həyat tərzi, siqaret və büdcə cavabları skoru birbaşa dəyişir."
+      /*
+        Mətn əvvəl "Profil məlumatlarını tamamla" ilə başlayırdı və bu, bölməyə
+        GİRİŞ ŞƏRTİ kimi oxunurdu — halbuki otaq yoldaşı axtarışı profilsiz də
+        işləyir, profil yalnız uyğunluq FAİZİNİ dəqiqləşdirir. İndi əsas səbəb
+        (hələ az profil var) öndədir, profil isə təklif kimi qalır.
+      */
+      description="Bölmə yenidir və hələ az tələbə profili var. Filtrləri genişləndirib yenidən baxın — profilinizi tamamlasanız, uyğunluq faizi də dəqiqləşəcək."
       className={className}
       actions={
         <>
-          <ButtonLink href={profileHref} variant="primary">
+          <ButtonLink href={profileHref} variant="tertiary">
             <UserRoundPlus className="size-4" aria-hidden />
             Profili tamamla
           </ButtonLink>

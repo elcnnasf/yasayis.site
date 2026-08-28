@@ -65,6 +65,24 @@ export const verifyOtpSchema = z.object({
 });
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
 
+/**
+ * Nömrənin TƏSDİQSİZ təyini.
+ *
+ * NİYƏ AYRI AXIN
+ * Nömrə əvvəl yalnız OTP ilə yazıla bilirdi (`verifyPhone`). SMS provayderi
+ * olmayanda isə bu, ev sahibini tələyə salırdı: nömrə əlavə edə bilmir, ona
+ * görə elanında "Nömrəni göstər" düyməsi heç vaxt çıxmır və tələbə yalnız
+ * mesaj yaza bilir.
+ *
+ * Bu axın nömrəni yazır, amma `phoneVerifiedAt`-ı QOYMUR — yəni "təsdiqlənib"
+ * nişanı qazanılmır. Fərq qorunur: nömrənin mövcudluğu ilə onun yoxlanmış
+ * olması eyni şey deyil.
+ */
+export const setPhoneSchema = z.object({
+  phone: phoneSchema,
+});
+export type SetPhoneInput = z.infer<typeof setPhoneSchema>;
+
 // --- Parol -----------------------------------------------------------------
 
 export const changePasswordSchema = z

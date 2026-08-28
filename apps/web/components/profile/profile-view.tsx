@@ -40,6 +40,7 @@ import { MyListingActions } from './my-listing-actions';
 import { OwnerProfileForm } from './owner-profile-form';
 import { PasswordCard } from './password-card';
 import { PhoneCard } from './phone-card';
+import { PhonePlainCard } from './phone-plain-card';
 import { RoommateVisibility } from './roommate-visibility';
 
 /**
@@ -192,12 +193,26 @@ export function ProfileView() {
         />
       )}
 
-      {/* Hesab bölməsi rollardan asılı deyil — hər iki tabda eyni yerdədir. */}
-      <PhoneCard
-        phone={user.phone}
-        verified={verifications.phone}
-        onVerified={() => void reload()}
-      />
+      {/*
+        Hesab bölməsi rollardan asılı deyil — hər iki tabda eyni yerdədir.
+
+        İki fərqli telefon kartı, çünki iki fərqli iş görürlər:
+          · təsdiq mümkündürsə → OTP ilə TƏSDİQ (nişan qazandırır)
+          · mümkün deyilsə     → sadəcə əlaqə nömrəsi (nişan yoxdur)
+
+        Əvvəl ikinci hal ümumiyyətlə yox idi: SMS provayderi olmayanda nömrə
+        yazmağın heç bir yolu qalmırdı və ev sahibi öz elanına zəng düyməsi
+        əlavə edə bilmirdi.
+      */}
+      {caps?.phoneAuth ? (
+        <PhoneCard
+          phone={user.phone}
+          verified={verifications.phone}
+          onVerified={() => void reload()}
+        />
+      ) : (
+        <PhonePlainCard phone={user.phone} onSaved={() => void reload()} />
+      )}
       <PasswordCard />
       <AccountActions />
     </div>
