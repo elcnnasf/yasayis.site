@@ -5,6 +5,8 @@
   "description": "Yaşayış — istifadəçi interfeysi və admin panel",
   "scripts": {
     "dev": "next dev --port 3000",
+    "_comment_prebuild": "Vercel `apps/web` qovluğunu kök kimi götürür və yalnız `build` çağırır. `@yasayis/shared` isə ondan əvvəl qurulmalıdır — yoxsa Next onun `dist`-ini tapa bilmir. `prebuild` npm tərəfindən `build`-dən ƏVVƏL avtomatik işə düşür, ona görə hostda əlavə konfiqurasiya lazım gəlmir.",
+    "prebuild": "cd ../.. && npm run build --workspace=@yasayis/shared",
     "build": "next build",
     "start": "next start --port 3000",
     "typecheck": "tsc --noEmit"
