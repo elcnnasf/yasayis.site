@@ -8,6 +8,7 @@ import {
   Query,
   Req,
   Res,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -80,6 +81,23 @@ export class AuthController {
     return this.startSession(user, req, res);
   }
 
+  /**
+   * Client-in hansı giriş yollarını göstərəcəyi.
+   *
+   * Konfiqurasiya serverdədir, web isə onu oxuya bilmir — ona görə açıq şəkildə
+   * soruşur. İşləməyən düyməni ekranda saxlamaqdansa (istifadəçi basır, xəta
+   * alır) onu ümumiyyətlə göstərməmək düzgündür.
+   */
+  @Public()
+  @Get('capabilities')
+  capabilities() {
+    return {
+      /** Telefonla giriş, nömrə təsdiqi və parol sıfırlama. */
+      phoneAuth: this.config.get('SMS_PROVIDER', { infer: true }) !== 'disabled',
+      google: this.google.isConfigured,
+    };
+  }
+
   // --- Google OAuth --------------------------------------------------------
 
   /**
@@ -122,6 +140,7 @@ export class AuthController {
     default: { limit: RATE_LIMIT.OTP_REQUEST.limit, ttl: RATE_LIMIT.OTP_REQUEST.ttlSec * 1000 },
   })
   async requestOtp(@Body(zodBody(requestOtpSchema)) dto: unknown) {
+    this.assertPhoneAuth();
     const { phone, purpose } = dto as RequestOtpInput;
     // `purpose` OTP qeydinin bir hissəsidir və yoxlama zamanı da tələb olunur.
     // Əvvəl burada atılırdı: hansı məqsəd göndərilsə də həmişə `PHONE_VERIFY`
@@ -162,6 +181,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResultDto> {
+    this.assertPhoneAuth();
     const user = await this.auth.verifyPhone(actor.id, dto as never);
     // Token yenilənir ki, `phoneVerified` bayrağı dərhal işləsin.
     return this.startSession(user, req, res);
@@ -176,6 +196,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResultDto> {
+    this.assertPhoneAuth();
     const user = await this.auth.loginWithPhone(dto as never);
     return this.startSession(user, req, res);
   }
@@ -197,6 +218,8 @@ export class AuthController {
   @Post('password/reset')
   @HttpCode(HttpStatus.NO_CONTENT)
   async resetPassword(@Body(zodBody(resetPasswordSchema)) dto: unknown): Promise<void> {
+    // Parol sıfırlama SMS koduna əsaslanır — telefon sönülüdürsə mümkün deyil.
+    this.assertPhoneAuth();
     const userId = await this.auth.resetPassword(dto as never);
     await this.tokens.revokeAllForUser(userId);
   }
@@ -267,6 +290,21 @@ export class AuthController {
   }
 
   // --- Köməkçi -------------------------------------------------------------
+
+  /**
+   * Telefon funksiyaları söndürülübsə sorğunu dayandırır.
+   *
+   * `503` seçilib, `400` yox: səhv istifadəçidə deyil — xidmət konfiqurasiya
+   * olunmayıb. Mesaj da bunu açıq deyir ki, istifadəçi öz nömrəsində problem
+   * axtarmasın.
+   */
+  private assertPhoneAuth(): void {
+    if (this.config.get('SMS_PROVIDER', { infer: true }) === 'disabled') {
+      throw new ServiceUnavailableException(
+        'Telefonla bağlı funksiyalar hazırda əlçatan deyil. E-poçt ilə davam edin.',
+      );
+    }
+  }
 
   private async startSession(
     user: AuthUser,

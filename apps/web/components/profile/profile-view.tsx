@@ -28,6 +28,7 @@ import {
   type ProfileOverviewDto,
 } from '@yasayis/shared';
 import { api } from '@/lib/api-client';
+import { useCapabilities } from '@/lib/capabilities';
 import { resetFavorites } from '@/lib/favorites';
 import { NoOwnListings } from '@/components/empty/empty-state';
 import { Badge, VerificationRow, VerifiedBadge } from '@/components/ui/badge';
@@ -58,6 +59,7 @@ export function ProfileView() {
   const [tab, setTab] = useState<Tab>('student');
   const [pendingField, setPendingField] = useState<string | null>(null);
   const [roleBusy, setRoleBusy] = useState(false);
+  const caps = useCapabilities();
 
   /**
    * Səhifənin bütün məlumatı bir sorğudan gəlir, ona görə hər dəyişiklikdən
@@ -173,7 +175,10 @@ export function ProfileView() {
             pendingField={pendingField}
           />
 
-          <RoommateVisibility phoneVerified={verifications.phone} />
+          <RoommateVisibility
+            phoneVerified={verifications.phone}
+            phoneAuth={caps?.phoneAuth ?? false}
+          />
         </>
       )}
 

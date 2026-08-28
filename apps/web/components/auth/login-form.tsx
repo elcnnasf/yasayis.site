@@ -8,6 +8,7 @@ import { api, ApiRequestError } from '@/lib/api-client';
 import { resetFavorites } from '@/lib/favorites';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
+import { useCapabilities } from '@/lib/capabilities';
 import { cn } from '@/lib/cn';
 import { GoogleButton } from './google-button';
 import { PhoneVerify } from './phone-verify';
@@ -34,7 +35,12 @@ type Method = 'email' | 'phone';
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
+  const caps = useCapabilities();
   const [method, setMethod] = useState<Method>('email');
+
+  // Telefon sönülüdürsə tab da, forma da göstərilmir.
+  const phoneAuth = caps?.phoneAuth ?? false;
+  const active: Method = phoneAuth ? method : 'email';
 
   /** Hər iki yolun sonu eynidir — sessiya quruldu, indi hara? */
   const finish = (result: AuthResultDto) => {
@@ -50,10 +56,10 @@ export function LoginForm() {
 
   return (
     <div className="flex flex-col gap-5">
-      <MethodTabs value={method} onChange={setMethod} />
+      {phoneAuth && <MethodTabs value={active} onChange={setMethod} />}
 
-      {method === 'email' ? (
-        <EmailLogin onDone={finish} />
+      {active === 'email' ? (
+        <EmailLogin onDone={finish} phoneAuth={phoneAuth} />
       ) : (
         <PhoneVerify
           purpose="LOGIN"
@@ -108,7 +114,14 @@ function MethodTabs({ value, onChange }: { value: Method; onChange: (m: Method) 
   );
 }
 
-function EmailLogin({ onDone }: { onDone: (result: AuthResultDto) => void }) {
+function EmailLogin({
+  onDone,
+  phoneAuth,
+}: {
+  onDone: (result: AuthResultDto) => void;
+  /** Parol sıfırlama SMS koduna əsaslanır — telefon sönülüdürsə link göstərilmir. */
+  phoneAuth: boolean;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -186,12 +199,14 @@ function EmailLogin({ onDone }: { onDone: (result: AuthResultDto) => void }) {
         Daxil ol
       </Button>
 
-      <Link
-        href="/parol-sifirla"
-        className="text-center text-sm font-medium text-forest-700 hover:underline"
-      >
-        Parolu unutmusan?
-      </Link>
+      {phoneAuth && (
+        <Link
+          href="/parol-sifirla"
+          className="text-center text-sm font-medium text-forest-700 hover:underline"
+        >
+          Parolu unutmusan?
+        </Link>
+      )}
     </form>
   );
 }

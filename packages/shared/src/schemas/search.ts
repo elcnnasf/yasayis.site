@@ -8,7 +8,13 @@
 
 import { z } from 'zod';
 import { Amenity, GenderPreference, values } from '../enums';
-import { csvArray, idSchema, pageQuerySchema, paginationQuerySchema } from './common';
+import {
+  booleanFlag,
+  csvArray,
+  idSchema,
+  pageQuerySchema,
+  paginationQuerySchema,
+} from './common';
 
 export const SORT_OPTIONS = {
   /** Universitet seçilibsə ona yaxınlıq, yoxsa yenilik. */
@@ -51,22 +57,22 @@ export const searchListingsQuerySchema = pageQuerySchema.extend({
   priceMin: z.coerce.number().int().min(0).optional(),
   priceMax: z.coerce.number().int().min(0).optional(),
   roomCount: csvArray(z.coerce.number().int().min(1).max(10)),
-  hasVacantRoom: z.coerce.boolean().optional(),
+  hasVacantRoom: booleanFlag.optional(),
 
-  forStudents: z.coerce.boolean().optional(),
-  forWomen: z.coerce.boolean().optional(),
-  forMen: z.coerce.boolean().optional(),
+  forStudents: booleanFlag.optional(),
+  forWomen: booleanFlag.optional(),
+  forMen: booleanFlag.optional(),
 
-  petsAllowed: z.coerce.boolean().optional(),
+  petsAllowed: booleanFlag.optional(),
   /** true = siqaret çəkmək olar (balkonda da daxil). */
-  smokingAllowed: z.coerce.boolean().optional(),
+  smokingAllowed: booleanFlag.optional(),
 
   /** Mebel, Wi-Fi, metroya yaxınlıq və digər imkanlar. */
   amenity: csvArray(z.enum(values(Amenity))),
 
   /** true = depozit tələb olunmur. */
-  noDeposit: z.coerce.boolean().optional(),
-  utilitiesIncluded: z.coerce.boolean().optional(),
+  noDeposit: booleanFlag.optional(),
+  utilitiesIncluded: booleanFlag.optional(),
 
   ownerType: z.enum([OWNER_TYPES.PERSON, OWNER_TYPES.AGENCY]).optional(),
 

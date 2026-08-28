@@ -1,7 +1,9 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { VerificationStatus, VerificationType } from '@yasayis/db';
 import type { RoommateProfileInput } from '@yasayis/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import type { Env } from '../../config/env';
 
 /**
  * Doğrulama və otaq yoldaşı profilinin görünürlüyü.
@@ -26,7 +28,15 @@ import { PrismaService } from '../../common/prisma/prisma.service';
  */
 @Injectable()
 export class VerificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService<Env, true>,
+  ) {}
+
+  /** Telefon təsdiqi ümumiyyətlə mümkündürmü. */
+  private get phoneAuthEnabled(): boolean {
+    return this.config.get('SMS_PROVIDER', { infer: true }) !== 'disabled';
+  }
 
   // =========================================================================
   //  Otaq yoldaşı profilinin görünürlüyü
@@ -50,7 +60,16 @@ export class VerificationsService {
       select: { phoneVerifiedAt: true },
     });
 
-    if (input.visible && !user?.phoneVerifiedAt) {
+    /*
+      Telefon şərti YALNIZ telefon təsdiqi mümkün olanda tətbiq olunur.
+
+      `SMS_PROVIDER="disabled"` rejimində istifadəçinin nömrəsini təsdiqləməyə
+      heç bir yolu yoxdur. Şərti olduğu kimi saxlasaydıq, otaq yoldaşı profili
+      HEÇ VAXT görünə bilməzdi və platformanın yarısı ölü qalardı — üstəlik
+      istifadəçi səbəbini heç cür başa düşməzdi, çünki ekranda təsdiq düyməsi
+      də olmayacaq.
+    */
+    if (this.phoneAuthEnabled && input.visible && !user?.phoneVerifiedAt) {
       throw new ForbiddenException(
         'Profilinizin görünməsi üçün əvvəlcə telefon nömrənizi təsdiqləyin',
       );

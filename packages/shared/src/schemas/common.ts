@@ -115,3 +115,35 @@ export const csvArray = <T extends z.ZodTypeAny>(item: T) =>
       return parts.map((p) => p.trim()).filter(Boolean);
     })
     .pipe(z.array(item).optional());
+
+/**
+ * Query string və ya mühit dəyişənindən gələn məntiqi bayraq.
+ *
+ * NİYƏ `z.coerce.boolean()` DEYİL
+ * `coerce.boolean` JS-in `Boolean()` funksiyasını çağırır, o isə BOŞ OLMAYAN
+ * İSTƏNİLƏN SƏTRİ `true` sayır. Yəni `"false"`, `"0"`, `"off"` — hamısı `true`
+ * olur. Nəticədə `?petsAllowed=false` filtri əksinə işləyirdi və
+ * `MONETIZATION_ENABLED="false"` tətbiqin prod-da start etməsinə mane olurdu.
+ *
+ * Burada dəyər AÇIQ ŞƏKİLDƏ oxunur: yalnız tanınan "doğru" sözləri `true`
+ * verir, qalanı `false`.
+ */
+const TRUE_WORDS = new Set(['true', '1', 'yes', 'on']);
+const FALSE_WORDS = new Set(['false', '0', 'no', 'off', '']);
+
+export const booleanFlag = z
+  .union([z.boolean(), z.string(), z.number()])
+  .transform((value, ctx) => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+
+    const normalized = value.trim().toLowerCase();
+    if (TRUE_WORDS.has(normalized)) return true;
+    if (FALSE_WORDS.has(normalized)) return false;
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Dəyər true və ya false olmalıdır',
+    });
+    return z.NEVER;
+  });

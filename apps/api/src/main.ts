@@ -53,7 +53,14 @@ async function bootstrap(): Promise<void> {
   app.useGlobalFilters(new AllExceptionsFilter());
   app.enableShutdownHooks();
 
-  await app.listen(port);
+  /*
+    `0.0.0.0` — konteynerdə işləyən hostlar üçün məcburidir.
+
+    Ünvan verilməsə Node bəzi mühitlərdə yalnız `localhost`-a bağlanır və
+    konteynerin kənarından gələn trafik ora çatmır: host sağlamlıq yoxlamasını
+    keçirə bilmir və deploy uğursuz sayılır.
+  */
+  await app.listen(port, '0.0.0.0');
   new Logger('Yaşayış API').log(`http://localhost:${port}${prefix} — hazırdır`);
 }
 

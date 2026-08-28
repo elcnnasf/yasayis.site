@@ -260,6 +260,122 @@ Bunlar **işləmir deyil, YOXDUR** — MVP sərhədinin o tayındadır:
 
 ---
 
+## Yerləşdirmə (deploy)
+
+### Memarlıq — nə harada işləyir
+
+| Hissə | Harada | Niyə |
+|---|---|---|
+| `apps/web` (Next.js) | Vercel | Next üçün ən az konfiqurasiya tələb edən host |
+| `apps/api` (NestJS) | Railway / Render / Fly.io | **Daimi Node prosesi lazımdır** — serverless yaramır |
+| Baza | Supabase (artıq var) | — |
+| Şəkillər | Supabase Storage (bucket hazırdır) | — |
+
+**API-ni serverless-ə (Vercel Functions və s.) qoymayın.** İki səbəb:
+
+1. `@nestjs/schedule` ilə iki cron işi var — elanların müddətinin bitməsi
+   (hər gün 03:00) və nəticə sorğuları (10:00). Serverless funksiya sorğular
+   arasında yaşamır, yəni bu işlər HEÇ VAXT işləməz.
+2. Prisma bağlantı hovuzu uzunömürlü proses üçün qurulub.
+
+### DNS
+
+```
+yasayis.site        → web hostu (Vercel)
+api.yasayis.site    → API hostu
+```
+
+**API-ni mütləq öz domeninizin ALTDOMENİNƏ qoyun.** Sessiya cookie ilə işləyir:
+`yasayis.site` və `api.yasayis.site` eyni sayt sayılır, ona görə
+`COOKIE_SAMESITE="lax"` işləyir. API başqa domendə qalsa (`*.railway.app` kimi),
+cookie kross-sayt olur və `SameSite=None` tələb edir — Safari və Chrome isə belə
+cookie-ləri getdikcə daha çox bloklayır, yəni giriş sıradan çıxar.
+
+### Əmrlər
+
+Hər iki host üçün build monorepo kökündən gedir:
+
+```bash
+npm ci
+npm run build          # shared → db (prisma generate) → api → web
+```
+
+| | Build | Start |
+|---|---|---|
+| API | `npm run build` | `npm run start --workspace=@yasayis/api` |
+| Web | `npm run build` | `npm run start --workspace=@yasayis/web` |
+
+### Mühit dəyişənləri — API
+
+`.env.example`-dan fərqlənən sətirlər:
+
+```bash
+NODE_ENV="production"
+PUBLIC_URL="https://api.yasayis.site"
+CORS_ORIGIN="https://yasayis.site"
+COOKIE_SAMESITE="lax"
+
+STORAGE_DRIVER="supabase"        # prod-da məcburidir
+
+# SMS: "http" (real provayder) və ya "disabled" (telefon funksiyaları sönülü).
+# "console" prod-da QADAĞANDIR — kod yalnız log-a düşür, istifadəçi onu ala bilmir.
+SMS_PROVIDER="disabled"
+# SMS_PROVIDER="http" seçəndə bu ikisi məcburidir:
+# SMS_API_URL="..."
+# SMS_API_KEY="..."
+
+JWT_ACCESS_SECRET="..."          # YENİDƏN yaradın: openssl rand -base64 48
+JWT_REFRESH_SECRET="..."         # YENİDƏN yaradın
+```
+
+`SUPABASE_ACCESS_TOKEN` istehsalat serverinə **qoyulmur** — o, yalnız sxem
+miqrasiyası üçündür və hesab səviyyəli səlahiyyət verir.
+
+### Mühit dəyişənləri — Web
+
+```bash
+NEXT_PUBLIC_API_URL="https://api.yasayis.site/api/v1"
+NEXT_PUBLIC_SITE_URL="https://yasayis.site"
+```
+
+### Buraxılışdan əvvəl bunlar həll olunmalıdır
+
+Tətbiq bu şərtlər ödənmədən **start etmir** (`validateEnv` açılışda yoxlayır):
+
+* [ ] **SMS rejimi** — `SMS_PROVIDER="console"` prod-da qadağandır. İki seçim:
+      * `"disabled"` — telefonla bağlı funksiyalar tam sönülü. Sayt e-poçtla
+        qeydiyyat, giriş, elan, axtarış, xəritə və mesajlaşma ilə işləyir;
+        telefon düymələri ekranda ümumiyyətlə görünmür. **Provayder olmadan
+        canlıya çıxmağın yolu budur.**
+      * `"http"` — real provayder. `SMS_API_URL` və `SMS_API_KEY` lazımdır;
+        provayderin sorğu formatı fərqlidirsə
+        `apps/api/src/modules/sms/sms.service.ts`-dəki `send()` metodunu
+        uyğunlaşdırın.
+
+      `disabled` rejimində İTİRİLƏN funksiyalar: telefonla giriş, nömrə təsdiqi
+      nişanı və **parolun SMS ilə bərpası**. Sonuncu vacibdir — parolunu unudan
+      istifadəçi özü bərpa edə bilmir, sizə yazmalıdır.
+* [ ] `STORAGE_DRIVER="supabase"` və Supabase açarları.
+* [ ] JWT açarları yenidən yaradılıb (köhnələri dev-də işlədilib).
+* [ ] `MONETIZATION_ENABLED="false"` — ödəniş inteqrasiyası yoxdur.
+
+İstəyə bağlı: Google OAuth açarları. Verilməsə düymə ekranda ümumiyyətlə
+görünmür — sındırmır.
+
+### Deploy-dan sonra yoxlama
+
+```bash
+curl https://api.yasayis.site/api/v1/health      # {"status":"ok","database":"ok"}
+curl -I https://yasayis.site                     # 200
+curl https://yasayis.site/robots.txt             # Sitemap sətri doğru domeni göstərməlidir
+```
+
+Sonra brauzerdə: qeydiyyat → giriş → elan yerləşdir → şəkil yüklə → elanın
+axtarışda görünməsi. Şəkil yüklənmirsə səbəb demək olar həmişə Supabase
+bucket-inin icazələridir.
+
+---
+
 ## Təhlükəsizlik
 
 ### Tətbiq edilmiş nəzarətlər

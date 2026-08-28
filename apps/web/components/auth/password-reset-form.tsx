@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2 } from 'lucide-react';
 import { api } from '@/lib/api-client';
+import { useCapabilities } from '@/lib/capabilities';
 import { ButtonLink } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/field';
 import { PhoneVerify } from './phone-verify';
@@ -19,9 +20,32 @@ import { PhoneVerify } from './phone-verify';
  */
 export function PasswordResetForm() {
   const router = useRouter();
+  const caps = useCapabilities();
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [done, setDone] = useState(false);
+
+  /*
+    Parol sıfırlama SMS koduna əsaslanır. Telefon sönülüdürsə səhifə formanı
+    göstərmir: istifadəçi nömrəsini yazıb "kod göndər" basar və yalnız o zaman
+    xəta alardı.
+  */
+  if (caps && !caps.phoneAuth) {
+    return (
+      <div className="flex flex-col gap-4 text-center">
+        <p className="text-body leading-relaxed text-stone-700">
+          Parolun bərpası hazırda SMS ilə işləyir və bu funksiya müvəqqəti
+          söndürülüb. Kömək üçün bizə yazın — hesabınızı əl ilə bərpa edək.
+        </p>
+        <ButtonLink href="/elaqe" fullWidth>
+          Bizə yazın
+        </ButtonLink>
+        <ButtonLink href="/giris" variant="tertiary" fullWidth>
+          Girişə qayıt
+        </ButtonLink>
+      </div>
+    );
+  }
 
   if (done) {
     return (

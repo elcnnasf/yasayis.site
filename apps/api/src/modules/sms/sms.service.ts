@@ -23,6 +23,16 @@ export class SmsService {
   async send(phone: string, text: string): Promise<void> {
     const provider = this.config.get('SMS_PROVIDER', { infer: true });
 
+    if (provider === 'disabled') {
+      /*
+        Bura düşmək NORMAL HALDA MÜMKÜN DEYİL: `disabled` rejimində OTP
+        endpoint-ləri sorğunu daha əvvəl rədd edir və UI telefon düymələrini
+        göstərmir. Buraya çatmaq kodda boşluq deməkdir, ona görə səssiz
+        keçmirik — xəta atırıq ki, səbəb gizlənməsin.
+      */
+      throw new Error('SMS funksiyaları söndürülüb (SMS_PROVIDER="disabled")');
+    }
+
     if (provider === 'console') {
       this.logger.warn(`[SMS → ${phone}] ${text}`);
       return;

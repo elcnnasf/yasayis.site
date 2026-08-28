@@ -8,7 +8,7 @@
  */
 
 import { z } from 'zod';
-import { idSchema, slugSchema } from './common';
+import { booleanFlag, idSchema, slugSchema } from './common';
 
 const nameFields = {
   name: z.string().trim().min(2, 'Ad çox qısadır').max(180, 'Ad çox uzundur'),
@@ -65,7 +65,7 @@ export const majorUpdateSchema = majorInputSchema.partial();
 export const taxonomyListQuerySchema = z.object({
   cityId: idSchema.optional(),
   /** Admin panel deaktiv qeydləri də görməlidir. */
-  includeInactive: z.coerce.boolean().default(false),
+  includeInactive: booleanFlag.default(false),
   q: z.string().trim().min(1).max(80).optional(),
 });
 export type TaxonomyListQuery = z.infer<typeof taxonomyListQuerySchema>;

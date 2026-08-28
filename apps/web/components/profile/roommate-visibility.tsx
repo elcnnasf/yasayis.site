@@ -24,7 +24,16 @@ interface RoommateProfileDto {
  * `visible` telefon təsdiqindən ASILIDIR. Bu qayda serverdə məcburidir, burada
  * yalnız səbəbi izah olunur — istifadəçi açarın niyə işləmədiyini tapmasın.
  */
-export function RoommateVisibility({ phoneVerified }: { phoneVerified: boolean }) {
+export function RoommateVisibility({
+  phoneVerified,
+  phoneAuth,
+}: {
+  phoneVerified: boolean;
+  /** false = telefon təsdiqi ümumiyyətlə mümkün deyil, şərt tətbiq olunmur. */
+  phoneAuth: boolean;
+}) {
+  // Telefon sönülüdürsə server də şərti tətbiq etmir (bax: `updateRoommateProfile`).
+  const blocked = phoneAuth && !phoneVerified;
   const [profile, setProfile] = useState<RoommateProfileDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,14 +101,14 @@ export function RoommateVisibility({ phoneVerified }: { phoneVerified: boolean }
           publicLabel="Profilim başqalarına görünür"
           privateLabel="Profilim gizlidir"
           note={
-            phoneVerified
-              ? 'Yalnız giriş etmiş tələbələr profilini görə bilir.'
-              : 'Görünmək üçün əvvəlcə telefon nömrəni təsdiqlə.'
+            blocked
+              ? 'Görünmək üçün əvvəlcə telefon nömrəni təsdiqlə.'
+              : 'Yalnız giriş etmiş tələbələr profilini görə bilir.'
           }
         />
       </div>
 
-      {!phoneVerified && (
+      {blocked && (
         <Well className="mt-3">
           <p className="text-sm leading-relaxed text-stone-700">
             Telefon nömrən təsdiqlənməyib, ona görə profilin otaq yoldaşı

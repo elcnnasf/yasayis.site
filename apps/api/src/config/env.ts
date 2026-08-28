@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { booleanFlag } from '@yasayis/shared';
 
 /**
  * `.env` faylında doldurulmamış sahə boş sətir kimi gəlir (`KEY=""`), bu isə
@@ -24,6 +25,17 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url('DATABASE_URL düzgün deyil'),
   DIRECT_URL: optionalUrl(),
 
+  /*
+    Portu HOST təyin edir.
+
+    Render, Railway, Fly və əksər hostlar dinlənəcək portu `PORT` mühit
+    dəyişəni ilə verir və trafiki ora yönləndirir. Tətbiq sabit 4000-i
+    dinləsəydi, host heç bir cavab almayıb onu "sağlam deyil" sayardı və
+    dayandırardı — deploy səssizcə uğursuz olardı.
+
+    Ona görə sıra belədir: `API_PORT` (açıq təyin edilibsə) → `PORT` (host
+    verirsə) → 4000 (lokal iş).
+  */
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   API_PREFIX: z.string().startsWith('/').default('/api/v1'),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
@@ -65,9 +77,27 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().default('Yaşayış <noreply@yasayis.site>'),
 
   // Monetizasiya: ödəniş inteqrasiyası yoxdur, bayraq həmişə false olmalıdır.
-  MONETIZATION_ENABLED: z.coerce.boolean().default(false),
+  /*
+    `booleanFlag` işlədilir, `z.coerce.boolean()` yox: sonuncu `"false"` sətrini
+    `true` sayır (boş olmayan sətir JS-də truthy-dir). Nəticədə `.env`-də
+    `MONETIZATION_ENABLED="false"` yazılsa da dəyər `true` olurdu və tətbiq
+    prod-da "monetizasiya dəstəklənmir" xətası ilə START ETMİRDİ.
+  */
+  MONETIZATION_ENABLED: booleanFlag.default(false),
 
-  SMS_PROVIDER: z.enum(['console', 'http']).default('console'),
+  /*
+    SMS provayderi — telefon funksiyalarının açarı.
+
+      console  — kod yalnız log-a yazılır. YALNIZ DEV; prod-da qadağandır.
+      http     — real provayder (`SMS_API_URL` + `SMS_API_KEY` tələb olunur).
+      disabled — telefonla bağlı funksiyalar TAM SÖNÜLÜDÜR.
+
+    `disabled` şüurlu seçimdir, nasazlıq deyil: provayder hesabı olmayan
+    layihənin qalan hər şeylə (e-poçtla giriş, elan, axtarış, mesajlaşma)
+    canlıya çıxmasına imkan verir. Bu rejimdə telefonla bağlı bütün UI gizlənir
+    və OTP endpoint-ləri aydın xəta qaytarır — yarımçıq işləyən düymə qalmır.
+  */
+  SMS_PROVIDER: z.enum(['console', 'http', 'disabled']).default('console'),
   SMS_API_URL: optionalUrl(),
   SMS_API_KEY: optionalText(),
   SMS_SENDER: z.string().default('Yasayis'),
@@ -76,7 +106,18 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 export function validateEnv(raw: Record<string, unknown>): Env {
-  const parsed = envSchema.safeParse(raw);
+  /*
+    Host `PORT` verirsə, o üstün tutulur — bax: `API_PORT` şərhinə.
+
+    BOŞ SƏTİR də "verilməyib" sayılır. Host panellərində sahəni yaratmaq, amma
+    dəyəri boş qoymaq adi haldır; `z.coerce.number()` isə boş sətri 0-a çevirir
+    və tətbiq "port 1-dən böyük olmalıdır" kimi çaşdırıcı mesajla çökür.
+  */
+  const blank = (v: unknown) => v === undefined || v === null || v === '';
+  const withHostPort = blank(raw.API_PORT) ? { ...raw, API_PORT: raw.PORT } : raw;
+  if (blank(withHostPort.API_PORT)) delete withHostPort.API_PORT;
+
+  const parsed = envSchema.safeParse(withHostPort);
 
   if (!parsed.success) {
     const lines = parsed.error.issues.map((i) => `  · ${i.path.join('.')}: ${i.message}`);
@@ -109,9 +150,19 @@ export function validateEnv(raw: Record<string, unknown>): Env {
         'MONETIZATION_ENABLED hazırda dəstəklənmir — ödəniş inteqrasiyası qurulmayıb.',
       );
     }
-    // Konsola yazan SMS provayderi ilə real OTP göndərilmir — istifadəçi girə bilməz.
+    /*
+      Konsola yazan provayder prod-da qadağandır: kod yalnız server log-una
+      düşür, istifadəçi onu heç cür ala bilmir — yəni düymə var, nəticə yoxdur.
+
+      `disabled` isə İCAZƏLİDİR. Fərq niyyətdədir: `console` "real SMS olacaq,
+      amma hələ qurulmayıb" deməkdir və səssizcə sınır; `disabled` isə
+      "telefon funksiyaları yoxdur" deməkdir və UI buna uyğun gizlənir.
+    */
     if (env.SMS_PROVIDER === 'console') {
-      throw new Error('Production-da SMS_PROVIDER "console" ola bilməz.');
+      throw new Error(
+        'Production-da SMS_PROVIDER "console" ola bilməz. Real provayder üçün "http", ' +
+          'telefon funksiyalarını tamamilə söndürmək üçün "disabled" seçin.',
+      );
     }
   }
 
