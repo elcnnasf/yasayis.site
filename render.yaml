@@ -1,0 +1,73 @@
+# Render Blueprint — API-nin yerləşdirilməsi.
+#
+# NİYƏ FAYL, NİYƏ PANELDƏN ƏL İLƏ DEYİL
+# Build və start əmrləri monorepo-ya xasdır (əvvəlcə `shared`, sonra `db`-nin
+# prisma client-i, yalnız sonra API). Onları panelə əl ilə yazanda bir sözü
+# səhv yazmaq kifayətdir — deploy anlaşılmaz xəta ilə dayanır. Bu fayl həmin
+# əmrləri anbarın içində saxlayır və Render onu özü oxuyur.
+#
+# NƏ ETMƏLİ
+# Render → New → Blueprint → bu anbarı seçin. Render xidməti bu fayla görə
+# yaradır; sizdən yalnız `sync: false` işarələnmiş dəyişənləri soruşacaq.
+#
+# WEB (Next.js) BURADA DEYİL — o, Vercel-də yerləşir. Səbəb: Vercel Next üçün
+# heç bir konfiqurasiya tələb etmir və pulsuz planı yatmır.
+
+services:
+  - type: web
+    name: yasayis-api
+    runtime: node
+    plan: free
+    region: frankfurt # Supabase eu-west-1-dədir; yaxın region gecikməni azaldır
+
+    # Kökdən qurulur: workspace paketləri bir-birindən asılıdır.
+    buildCommand: npm ci && npm run build:api
+    startCommand: npm run start:api
+
+    # Render `/` ünvanına sorğu atır; bizdə isə marşrut prefiksi var.
+    healthCheckPath: /api/v1/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # `disabled` — telefon funksiyaları sönülü, SMS provayderi olmadan
+      # canlıya çıxmaq üçün. Provayder alanda "http" edin və aşağıdakı iki
+      # dəyişəni əlavə edin.
+      - key: SMS_PROVIDER
+        value: disabled
+
+      # Prod-da məcburidir: lokal disk deploy zamanı itir.
+      - key: STORAGE_DRIVER
+        value: supabase
+
+      - key: MONETIZATION_ENABLED
+        value: 'false'
+
+      # `lax` işləyir, çünki web və API eyni domenin altındadır
+      # (yasayis.site / api.yasayis.site). Fərqli domen olsaydı "none" lazım
+      # gələrdi və brauzerlər onu bloklayır.
+      - key: COOKIE_SAMESITE
+        value: lax
+
+      - key: PUBLIC_URL
+        value: https://api.yasayis.site
+      - key: CORS_ORIGIN
+        value: https://yasayis.site
+
+      # --- Aşağıdakılar SİRDİR: Render panelində əl ilə doldurulur ---
+      # `sync: false` = fayla yazılmır, Render sizdən soruşur.
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        sync: false

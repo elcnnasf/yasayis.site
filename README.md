@@ -293,17 +293,20 @@ cookie-ləri getdikcə daha çox bloklayır, yəni giriş sıradan çıxar.
 
 ### Əmrlər
 
-Hər iki host üçün build monorepo kökündən gedir:
-
-```bash
-npm ci
-npm run build          # shared → db (prisma generate) → api → web
-```
+Build həmişə monorepo KÖKÜNDƏN gedir — workspace paketləri bir-birindən
+asılıdır və ayrıca qurula bilmir.
 
 | | Build | Start |
 |---|---|---|
-| API | `npm run build` | `npm run start --workspace=@yasayis/api` |
-| Web | `npm run build` | `npm run start --workspace=@yasayis/web` |
+| API | `npm ci && npm run build:api` | `npm run start:api` |
+| Web | `npm ci && npm run build:web` | `npm run start:web` |
+
+`build:api` sırası: `shared` → `db` (prisma generate) → `api`.
+`build:web` sırası: `shared` → `web`.
+
+**Render üçün əl ilə yazmağa ehtiyac yoxdur** — anbarın kökündəki
+`render.yaml` bu əmrləri və mühit dəyişənlərini özündə saxlayır.
+Render → New → **Blueprint** → anbarı seçin. Yalnız sirlər soruşulacaq.
 
 ### Mühit dəyişənləri — API
 
