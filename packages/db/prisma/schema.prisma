@@ -1,0 +1,1004 @@
+// =============================================================================
+//  Yaşayış — verilənlər bazası sxemi  (PROMPT A1)
+//
+//  Əsas prinsiplər:
+//   1. Rollar ADDİTİVDİR — is_student / is_owner / is_admin ayrı-ayrı bool-dur,
+//      bir-birini istisna etmir. Bir istifadəçi eyni anda tələbə və ev sahibi ola bilər.
+//   2. City / District / University / Major HARDCODED DEYİL — admin panelindən
+//      idarə olunan entity-lərdir (bax: aşağıdakı "TAKSONOMİYA" bölməsi).
+//   3. Property (fiziki obyekt) və Listing (elan) ayrıdır: bir əmlak zamanla
+//      bir neçə dəfə elan edilə bilər.
+//   4. Pul həmişə Int, qəpiklə saxlanılır. Float qadağandır.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+
+  // relationJoins — `include` üçün AYRI sorğu əvəzinə SQL JOIN (LATERAL).
+  //
+  // Prisma standart olaraq hər relation üçün ayrıca sorğu göndərir. Elan
+  // kartında isə `property → city, district, images, nearbyUniversities →
+  // university, owner → ownerProfile` açılır: bu, 7-8 ayrı gediş deməkdir.
+  // Baza uzaqdadır (Supabase eu-west-1, hər gediş ~0.4 s), ona görə 6 elanlıq
+  // siyahı 2.5 saniyə çəkirdi — sətir sayından yox, GEDİŞ sayından.
+  //
+  // JOIN ilə hamısı bir sorğuya yığılır.
+  previewFeatures = ["relationJoins"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// =============================================================================
+//  İSTİFADƏÇİ VƏ AUTENTİFİKASİYA
+// =============================================================================
+
+model User {
+  id           String  @id @default(cuid())
+  email        String? @unique
+  phone        String? @unique
+  googleId     String? @unique @map("google_id")
+  /// Yalnız Google ilə qeydiyyatdan keçən istifadəçidə null olur.
+  passwordHash String? @map("password_hash")
+
+  fullName  String  @map("full_name")
+  avatarUrl String? @map("avatar_url")
+
+  /// Additiv rollar — bir-birini istisna etmir.
+  isStudent Boolean @default(false) @map("is_student")
+  isOwner   Boolean @default(false) @map("is_owner")
+  isAdmin   Boolean @default(false) @map("is_admin")
+
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  phoneVerifiedAt DateTime?  @map("phone_verified_at")
+  status          UserStatus @default(ACTIVE)
+
+  /// Qeydiyyatdan sonrakı onboarding axını tamamlanıbmı (Prompt C1).
+  onboardedAt DateTime? @map("onboarded_at")
+
+  // --- Monetizasiya (HAZIRDA DEAKTİV) ---
+  // Ödəniş inteqrasiyası YOXDUR. Bu sahələr yalnız gələcəkdə sxem
+  // yenidənqurması tələb olunmasın deyə indidən saxlanılır. Bütün oxuma
+  // məntiqi `MONETIZATION_ENABLED` bayrağı ilə qorunur.
+  plan          UserPlan  @default(FREE)
+  planStartedAt DateTime? @map("plan_started_at")
+  planExpiresAt DateTime? @map("plan_expires_at")
+
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  studentProfile  StudentProfile?
+  ownerProfile    OwnerProfile?
+  roommateProfile RoommateProfile?
+
+  properties     Property[]
+  favorites      Favorite[]
+  searchAlerts   SearchAlert[]
+  notifications  Notification[]
+  verifications  Verification[]
+  refreshTokens  RefreshToken[]
+  otpCodes       OtpCode[]
+  sentMessages   Message[]      @relation("MessageSender")
+  inboxMessages  Message[]      @relation("MessageRecipient")
+  filedReports   Report[]       @relation("ReportReporter")
+  reviewedReports Report[]      @relation("ReportReviewer")
+  moderatedListings Listing[]   @relation("ListingModerator")
+  moderationActions ModerationAction[] @relation("ModerationActor")
+  matchesAsA        RoommateMatch[]    @relation("MatchUserA")
+  matchesAsB        RoommateMatch[]    @relation("MatchUserB")
+  contactsMade      ContactEvent[]     @relation("ContactInitiator")
+  contactsReceived  ContactEvent[]     @relation("ContactTarget")
+  outcomeSurveys    OutcomeSurvey[]
+  searchEvents      SearchEvent[]
+  auditLogs         AuditLog[]         @relation("AuditActor")
+
+  @@index([status, createdAt])
+  @@index([isAdmin])
+  @@map("users")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+/// İstifadəçi planı — hazırda hamı FREE-dir, ödəniş qoşulmayıb.
+enum UserPlan {
+  FREE
+  /// Tələbə: daha çox uyğun profil, daha çox saxlanılan axtarış, prioritet bildiriş.
+  STUDENT_PREMIUM
+  /// Agentlik: aylıq professional abunə.
+  AGENCY_PRO
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  userAgent String?   @map("user_agent") @db.VarChar(300)
+  ip        String?   @db.VarChar(64)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("refresh_tokens")
+}
+
+/// Telefon təsdiqi və parol bərpası üçün birdəfəlik kod.
+/// Kod açıq saxlanmır — yalnız hash-i. Prompt F4-dəki "Telefon təsdiqlənib"
+/// nişanı bu axının nəticəsindən (User.phoneVerifiedAt) asılıdır.
+model OtpCode {
+  id        String     @id @default(cuid())
+  userId    String?    @map("user_id")
+  phone     String
+  codeHash  String     @map("code_hash")
+  purpose   OtpPurpose
+  attempts  Int        @default(0)
+  expiresAt DateTime   @map("expires_at")
+  usedAt    DateTime?  @map("used_at")
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([phone, purpose, expiresAt])
+  @@map("otp_codes")
+}
+
+enum OtpPurpose {
+  PHONE_VERIFY
+  PASSWORD_RESET
+  LOGIN
+}
+
+// =============================================================================
+//  PROFİLLƏR
+// =============================================================================
+
+/// Tələbə profili.
+/// Hər məzmun sahəsinin yanında ayrıca `*IsPublic` bayrağı var: istifadəçi
+/// hansı sahənin başqalarına görünəcəyini özü seçir.
+model StudentProfile {
+  id     String @id @default(cuid())
+  userId String @unique @map("user_id")
+
+  // Onboarding 9 addımdan ibarətdir və yarımçıq qoyulub sonra davam etdirilə bilir,
+  // ona görə bu sahələr doldurulana qədər null qalır. Profilin "tam" olub-olmaması
+  // `onboardingStep` ilə deyil, sahələrin doluluğu ilə hesablanır (ProfilesService).
+  universityId String? @map("university_id")
+  majorId      String? @map("major_id")
+  cityId       String? @map("city_id")
+
+  bio       String? @db.VarChar(1000)
+  budgetMin Int?    @map("budget_min")
+  budgetMax Int?    @map("budget_max")
+
+  lifestyle        Lifestyle?
+  smoking          SmokingHabit?
+  petsAttitude     PetsAttitude?     @map("pets_attitude")
+  genderPreference GenderPreference? @map("gender_preference")
+  lookingFor       LookingFor?       @map("looking_for")
+
+  /// Növbəti göstəriləcək addım (0–9). 9 = bütün addımlar keçilib.
+  onboardingStep Int @default(0) @map("onboarding_step")
+
+  // --- Görünürlük: hər sahə üçün ayrıca ---
+  bioIsPublic               Boolean @default(true) @map("bio_is_public")
+  // Həssas: dəqiq büdcə rəqəmi və cins üstünlüyü default olaraq GİZLİDİR.
+  budgetIsPublic            Boolean @default(false) @map("budget_is_public")
+  lifestyleIsPublic         Boolean @default(true) @map("lifestyle_is_public")
+  smokingIsPublic           Boolean @default(true) @map("smoking_is_public")
+  petsAttitudeIsPublic      Boolean @default(true) @map("pets_attitude_is_public")
+  genderPreferenceIsPublic  Boolean @default(false) @map("gender_preference_is_public")
+  lookingForIsPublic        Boolean @default(true) @map("looking_for_is_public")
+  universityIsPublic        Boolean @default(true) @map("university_is_public")
+  majorIsPublic             Boolean @default(true) @map("major_is_public")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  university University? @relation(fields: [universityId], references: [id], onDelete: Restrict)
+  major      Major?     @relation(fields: [majorId], references: [id], onDelete: SetNull)
+  city       City?      @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  /// Axtardığı rayonlar — boşdursa bütün şəhər nəzərdə tutulur.
+  preferredDistricts StudentDistrictPreference[]
+
+  @@index([cityId, universityId])
+  @@index([lookingFor])
+  @@map("student_profiles")
+}
+
+/// Tələbənin axtardığı rayonlar (çoxseçimli).
+model StudentDistrictPreference {
+  studentProfileId String @map("student_profile_id")
+  districtId       String @map("district_id")
+
+  studentProfile StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  district       District       @relation(fields: [districtId], references: [id], onDelete: Cascade)
+
+  @@id([studentProfileId, districtId])
+  @@index([districtId])
+  @@map("student_district_preferences")
+}
+
+model OwnerProfile {
+  id                 String             @id @default(cuid())
+  userId             String             @unique @map("user_id")
+  verificationStatus VerificationStatus @default(NONE) @map("verification_status")
+  about              String?            @db.VarChar(1000)
+  isCompany          Boolean            @default(false) @map("is_company")
+  companyName        String?            @map("company_name") @db.VarChar(160)
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("owner_profiles")
+}
+
+/// Otaq yoldaşı bazarında görünmək üçün profil.
+/// `visible` YALNIZ telefon təsdiqindən sonra true ola bilər — bu qayda
+/// service təbəqəsində məcburidir (bax: RoommateProfileService).
+model RoommateProfile {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  active    Boolean  @default(true)
+  visible   Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([active, visible])
+  @@map("roommate_profiles")
+}
+
+enum Lifestyle {
+  SAKIT
+  SOSIAL
+  FERQI_YOXDUR
+}
+
+enum SmokingHabit {
+  CEKMIREM
+  CEKIREM
+  FERQI_YOXDUR
+}
+
+enum PetsAttitude {
+  SEVIREM
+  PROBLEM_DEYIL
+  ISTEMIREM
+}
+
+enum GenderPreference {
+  QADIN
+  KISI
+  FERQI_YOXDUR
+}
+
+enum LookingFor {
+  EV
+  OTAQ
+  OTAQ_YOLDASI
+  QERARSIZ
+}
+
+// =============================================================================
+//  TAKSONOMİYA  —  admin panelindən idarə olunur, KODDA SABİTLƏNMİR
+//
+//  City, District, University və Major cədvəlləri tam CRUD API ilə idarə olunur
+//  (yazma: yalnız admin; oxuma: hamı). Platforma Bakı ilə məhdudlaşmır —
+//  Gəncə, Sumqayıt, Mingəçevir, Naxçıvan və digər şəhərlər eyni sxemdə yaşayır.
+//  Yeni şəhər əlavə etmək üçün deploy lazım deyil.
+// =============================================================================
+
+model City {
+  id        String   @id @default(cuid())
+  name      String   @db.VarChar(120)
+  nameRu    String?  @map("name_ru") @db.VarChar(120)
+  slug      String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  districts    District[]
+  universities University[]
+  properties   Property[]
+  students     StudentProfile[]
+  searchAlerts SearchAlert[]
+
+  @@index([isActive, sortOrder])
+  @@map("cities")
+}
+
+model District {
+  id        String   @id @default(cuid())
+  cityId    String   @map("city_id")
+  name      String   @db.VarChar(120)
+  nameRu    String?  @map("name_ru") @db.VarChar(120)
+  slug      String
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  city               City                        @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  properties         Property[]
+  searchAlerts       SearchAlert[]
+  studentPreferences StudentDistrictPreference[]
+  jointSearchAreas   JointSearchDistrict[]
+
+  @@unique([cityId, slug])
+  @@index([cityId, isActive, sortOrder])
+  @@map("districts")
+}
+
+model University {
+  id        String   @id @default(cuid())
+  cityId    String?  @map("city_id")
+  name      String   @db.VarChar(180)
+  nameRu    String?  @map("name_ru") @db.VarChar(180)
+  shortName String?  @map("short_name") @db.VarChar(24)
+  slug      String   @unique
+  /// "Digər / siyahıda yoxdur" seçimi. Sistemdə yalnız BİR belə qeyd olur və
+  /// silinə bilməz — onboarding formasında həmişə son variant kimi göstərilir.
+  isOther   Boolean  @default(false) @map("is_other")
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  city         City?            @relation(fields: [cityId], references: [id], onDelete: SetNull)
+  students     StudentProfile[]
+  searchAlerts SearchAlert[]
+  nearbyProperties PropertyUniversityDistance[]
+
+  @@index([cityId, isActive, sortOrder])
+  @@index([isOther])
+  @@map("universities")
+}
+
+model Major {
+  id        String   @id @default(cuid())
+  name      String   @db.VarChar(180)
+  nameRu    String?  @map("name_ru") @db.VarChar(180)
+  slug      String   @unique
+  isOther   Boolean  @default(false) @map("is_other")
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  students StudentProfile[]
+
+  @@index([isActive, sortOrder])
+  @@map("majors")
+}
+
+// =============================================================================
+//  ƏMLAK VƏ ELAN
+// =============================================================================
+
+/// Fiziki obyekt. Elandan ayrıdır: eyni əmlak zamanla bir neçə dəfə elan edilə bilər.
+model Property {
+  id         String  @id @default(cuid())
+  ownerId    String  @map("owner_id")
+  title      String  @db.VarChar(140)
+  cityId     String  @map("city_id")
+  districtId String? @map("district_id")
+  /// Dəqiq ünvan — yalnız sahibi və admin görür.
+  address    String? @db.VarChar(240)
+
+  /// Qəpiklə (aylıq).
+  price              Int
+  utilitiesIncluded  Boolean @default(false) @map("utilities_included")
+  deposit            Int?
+
+  roomCount             Int @map("room_count")
+  vacantRoomCount       Int @default(0) @map("vacant_room_count")
+  currentOccupantsCount Int @default(0) @map("current_occupants_count")
+
+  /// Sadə statik xəritə göstəricisi üçün. Routing YOXDUR — yalnız nöqtə.
+  latitude  Float? 
+  longitude Float?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  owner    User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  city     City            @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  district District?       @relation(fields: [districtId], references: [id], onDelete: SetNull)
+  images   PropertyImage[]
+  listings Listing[]
+  nearbyUniversities PropertyUniversityDistance[]
+
+  @@index([ownerId, createdAt])
+  @@index([cityId, districtId, price])
+  @@map("properties")
+}
+
+/// Universitetə yaxınlıq — ƏL İLƏ daxil edilir, routing hesablanmır.
+/// Dəyər yalnız 5 / 10 / 15 / 30 dəqiqə ola bilər (service yoxlayır).
+model PropertyUniversityDistance {
+  propertyId   String @map("property_id")
+  universityId String @map("university_id")
+  minutes      Int
+
+  property   Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, universityId])
+  @@index([universityId, minutes])
+  @@map("property_university_distances")
+}
+
+model PropertyImage {
+  id         String   @id @default(cuid())
+  propertyId String   @map("property_id")
+  url        String   @db.VarChar(600)
+  thumbUrl   String?  @map("thumb_url") @db.VarChar(600)
+  /// Supabase Storage-dakı obyekt yolu — silinmə üçün lazımdır.
+  storagePath String? @map("storage_path") @db.VarChar(400)
+  width      Int?
+  height     Int?
+  sizeBytes  Int?     @map("size_bytes")
+  sortOrder  Int      @default(0) @map("sort_order")
+  isCover    Boolean  @default(false) @map("is_cover")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, sortOrder])
+  @@map("property_images")
+}
+
+/// Elan — əmlakın bazara çıxarılmış halı və onun qaydaları.
+model Listing {
+  id         String        @id @default(cuid())
+  propertyId String        @map("property_id")
+  slug       String        @unique
+  status     ListingStatus @default(PENDING)
+
+  description String? @db.VarChar(4000)
+
+  // --- Kimə uyğundur ---
+  suitableForStudents Boolean @default(true) @map("suitable_for_students")
+  suitableForWomen    Boolean @default(true) @map("suitable_for_women")
+  suitableForMen      Boolean @default(true) @map("suitable_for_men")
+  isMixed             Boolean @default(false) @map("is_mixed")
+
+  // --- Ev qaydaları ---
+  petsAllowed Boolean     @default(false) @map("pets_allowed")
+  smokingRule SmokingRule @default(QADAGANDIR) @map("smoking_rule")
+  guestRules  GuestRule   @default(RAZILASMAQLA) @map("guest_rules")
+
+  /// Çoxseçimli imkanlar. Postgres enum massivi — filtrdə `hasEvery`/`hasSome` ilə işlənir.
+  amenities Amenity[]
+
+  // --- Moderasiya (Prompt G) ---
+  rejectionReason String?   @map("rejection_reason") @db.VarChar(500)
+  moderatedById   String?   @map("moderated_by_id")
+  moderatedAt     DateTime? @map("moderated_at")
+
+  viewCount   Int       @default(0) @map("view_count")
+  publishedAt DateTime? @map("published_at")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // --- Monetizasiya (HAZIRDA DEAKTİV) ---
+  // Sıralama və axtarış bu sahələrə YALNIZ `MONETIZATION_ENABLED=true`
+  // olanda baxır. Ödəniş qoşulana qədər hamısı false qalır.
+  isBoosted        Boolean   @default(false) @map("is_boosted")
+  boostedUntil     DateTime? @map("boosted_until")
+  isPremium        Boolean   @default(false) @map("is_premium")
+  premiumUntil     DateTime? @map("premium_until")
+  isFeaturedOnHome Boolean   @default(false) @map("is_featured_on_home")
+  featuredUntil    DateTime? @map("featured_until")
+
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  moderatedBy User?    @relation("ListingModerator", fields: [moderatedById], references: [id], onDelete: SetNull)
+  modActions  ModerationAction[]
+  contactEvents ContactEvent[]
+
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([propertyId])
+  @@index([status, expiresAt])
+  @@map("listings")
+}
+
+enum ListingStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+  EXPIRED
+  SUSPENDED
+}
+
+enum SmokingRule {
+  ICAZELIDIR
+  BALKONDA
+  QADAGANDIR
+}
+
+enum GuestRule {
+  SERBEST
+  RAZILASMAQLA
+  QADAGANDIR
+}
+
+enum Amenity {
+  WIFI
+  KOMBI
+  KONDISIONER
+  PALTARYUYAN
+  SOYUDUCU
+  MEBEL
+  LIFT
+  PARKINQ
+  BALKON
+  METROYA_YAXIN
+}
+
+// =============================================================================
+//  QARŞILIQLI ƏLAQƏ
+// =============================================================================
+
+/// Favorit — həm elana, həm otaq yoldaşı profilinə qoyula bilər.
+///
+/// `targetType` + `targetId` polimorfik açardır, ona görə Postgres-də real
+/// foreign key qurmaq mümkün deyil. Bütövlük iki yerdə qorunur:
+///   1. FavoriteService yazmadan əvvəl hədəfin mövcudluğunu yoxlayır;
+///   2. Elan/profil siləndə ona aid favoritlər eyni tranzaksiyada silinir.
+model Favorite {
+  id         String        @id @default(cuid())
+  userId     String        @map("user_id")
+  targetType FavoriteTarget @map("target_type")
+  targetId   String        @map("target_id")
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([targetType, targetId])
+  @@map("favorites")
+}
+
+enum FavoriteTarget {
+  LISTING
+  ROOMMATE
+}
+
+/// Saxlanmış axtarış — yeni uyğun elan çıxanda bildiriş göndərmək üçün.
+model SearchAlert {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  name         String?  @db.VarChar(120)
+  cityId       String?  @map("city_id")
+  districtId   String?  @map("district_id")
+  universityId String?  @map("university_id")
+  priceMin     Int?     @map("price_min")
+  priceMax     Int?     @map("price_max")
+  roomCount    Int?     @map("room_count")
+  studentOnly  Boolean  @default(false) @map("student_only")
+  isActive     Boolean  @default(true) @map("is_active")
+  lastNotifiedAt DateTime? @map("last_notified_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city       City?       @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  district   District?   @relation(fields: [districtId], references: [id], onDelete: Cascade)
+  university University? @relation(fields: [universityId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@index([isActive, cityId])
+  @@map("search_alerts")
+}
+
+/// v1-də UI YOXDUR — yalnız sxem hazırlanır ki, sonrakı versiyada
+/// migration ilə data itkisi olmadan açıla bilsin.
+model Message {
+  id          String    @id @default(cuid())
+  senderId    String    @map("sender_id")
+  recipientId String    @map("recipient_id")
+  listingId   String?   @map("listing_id")
+  body        String    @db.VarChar(2000)
+  readAt      DateTime? @map("read_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  sender    User @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User @relation("MessageRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, createdAt(sort: Desc)])
+  @@index([senderId, createdAt(sort: Desc)])
+  @@map("messages")
+}
+
+/// Şikayət. `targetType` + `targetId` — Favorite ilə eyni polimorfik yanaşma.
+model Report {
+  id           String       @id @default(cuid())
+  reporterId   String       @map("reporter_id")
+  targetType   ReportTarget @map("target_type")
+  targetId     String       @map("target_id")
+  reason       ReportReason
+  comment      String?      @db.VarChar(500)
+  status       ReportStatus @default(OPEN)
+  reviewedById String?      @map("reviewed_by_id")
+  resolutionNote String?    @map("resolution_note") @db.VarChar(500)
+  resolvedAt   DateTime?    @map("resolved_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  reporter   User  @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("ReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+  @@map("reports")
+}
+
+enum ReportTarget {
+  LISTING
+  USER
+}
+
+enum ReportReason {
+  SAXTA_ELAN
+  YANLIS_MELUMAT
+  ARTIQ_KIRAYEDIR
+  SPAM
+  SUBHELI_DAVRANIS
+  TEHQIREDICI
+  DIGER
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+// =============================================================================
+//  OTAQ YOLDAŞI UYĞUNLAŞMASI VƏ BİRGƏ AXTARIŞ
+// =============================================================================
+
+/// İki tələbə arasında otaq yoldaşı uyğunlaşması.
+///
+/// Cüt həmişə eyni qaydada saxlanılır (userAId < userBId sətir sırası ilə),
+/// ona görə "A→B" və "B→A" iki ayrı qeyd yaratmır.
+model RoommateMatch {
+  id            String      @id @default(cuid())
+  userAId       String      @map("user_a_id")
+  userBId       String      @map("user_b_id")
+  /// Kim təklif etdi — cavab verən digəridir.
+  initiatedById String      @map("initiated_by_id")
+  status        MatchStatus @default(PENDING)
+  /// Təklif anındakı skor — sonra profil dəyişsə də tarixçə qalır.
+  scoreAtMatch  Int?        @map("score_at_match")
+  respondedAt   DateTime?   @map("responded_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  userA       User         @relation("MatchUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB       User         @relation("MatchUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  jointSearch JointSearch?
+
+  @@unique([userAId, userBId])
+  @@index([userAId, status])
+  @@index([userBId, status])
+  @@map("roommate_matches")
+}
+
+enum MatchStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+/// "Birlikdə ev axtar" — qəbul edilmiş uyğunlaşmadan sonra yaranan ortaq axtarış profili.
+/// Hər iki tərəfin büdcəsi birləşir və nəticələr D4-dəki axtarış motorundan gəlir.
+model JointSearch {
+  id        String   @id @default(cuid())
+  matchId   String   @unique @map("match_id")
+  /// Qəpiklə, iki büdcənin cəmi (redaktə oluna bilər).
+  budgetMin Int      @map("budget_min")
+  budgetMax Int      @map("budget_max")
+  roomCount Int      @default(2) @map("room_count")
+  studentsOnly Boolean @default(true) @map("students_only")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  match     RoommateMatch         @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  districts JointSearchDistrict[]
+
+  @@map("joint_searches")
+}
+
+model JointSearchDistrict {
+  jointSearchId String @map("joint_search_id")
+  districtId    String @map("district_id")
+
+  jointSearch JointSearch @relation(fields: [jointSearchId], references: [id], onDelete: Cascade)
+  district    District    @relation(fields: [districtId], references: [id], onDelete: Cascade)
+
+  @@id([jointSearchId, districtId])
+  @@map("joint_search_districts")
+}
+
+/// Uyğunluq formulunun çəkiləri — TƏK SƏTİRLİ konfiqurasiya.
+///
+/// Çəkilər kodda sabit rəqəm kimi yazılmır: admin gələcəkdə onları
+/// tənzimləyə bilsin deyə bazada saxlanılır. Sətir yoxdursa,
+/// `packages/shared` içindəki ilkin dəyərlər işlədilir.
+model MatchingWeights {
+  id             String   @id @default("default")
+  budget         Int      @default(25)
+  location       Int      @default(20)
+  university     Int      @default(15)
+  lifestyle      Int      @default(15)
+  smoking        Int      @default(10)
+  pets           Int      @default(5)
+  genderAndRoom  Int      @default(10) @map("gender_and_room")
+  updatedById    String?  @map("updated_by_id")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("matching_weights")
+}
+
+// =============================================================================
+//  ÖLÇMƏ (ANALİTİKA) — KPI və konversiya hunisi üçün
+//
+//  Ödəniş və daxili chat olmadan "uğurlu yaşayış bağlantısı" avtomatik
+//  ölçülə bilmir. Ona görə iki hadisə qeyd olunur (əlaqə təşəbbüsü və onun
+//  nəticəsi) və nəticə istifadəçinin özündən yüngül sorğu ilə soruşulur.
+// =============================================================================
+
+/// Əlaqə təşəbbüsü — istifadəçi nömrəni açanda və ya WhatsApp-a keçəndə yazılır.
+/// Hunidə 4-cü addım budur.
+model ContactEvent {
+  id           String         @id @default(cuid())
+  initiatorId  String         @map("initiator_id")
+  /// Kiminlə əlaqə saxlanılır — elan sahibi və ya otaq yoldaşı.
+  targetUserId String         @map("target_user_id")
+  /// Elan əlaqəsidirsə doludur; otaq yoldaşı əlaqəsində null.
+  listingId    String?        @map("listing_id")
+  channel      ContactChannel
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  initiator  User           @relation("ContactInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+  targetUser User           @relation("ContactTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  listing    Listing?       @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  survey     OutcomeSurvey?
+
+  /// Eyni elana təkrar baxış hunini şişirtməsin.
+  @@unique([initiatorId, targetUserId, listingId])
+  @@index([createdAt])
+  @@index([targetUserId, createdAt])
+  @@map("contact_events")
+}
+
+enum ContactChannel {
+  PHONE_REVEAL
+  WHATSAPP
+  CALL
+}
+
+/// "Nəticə necə oldu?" sorğusu.
+///
+/// Əlaqədən 3–5 gün sonra göndərilir. Bu, ödəniş və chat sistemi olmadan
+/// "uğurlu yaşayış bağlantısı" KPI-nı real ölçməyin yeganə yoludur.
+model OutcomeSurvey {
+  id             String         @id @default(cuid())
+  contactEventId String         @unique @map("contact_event_id")
+  userId         String         @map("user_id")
+  status         SurveyStatus   @default(PENDING)
+  outcome        SurveyOutcome?
+  /// Nə vaxt göstərilməyə başlayır — əlaqədən 3 gün sonra.
+  dueAt          DateTime       @map("due_at")
+  sentAt         DateTime?      @map("sent_at")
+  answeredAt     DateTime?      @map("answered_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  contactEvent ContactEvent @relation(fields: [contactEventId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, dueAt])
+  @@map("outcome_surveys")
+}
+
+enum SurveyStatus {
+  PENDING
+  SENT
+  ANSWERED
+  SKIPPED
+}
+
+enum SurveyOutcome {
+  /// Yaşayış tapdım
+  TAPDIM
+  /// Hələ axtarıram
+  HELE_AXTARIRAM
+  /// Cavab almadım
+  CAVAB_ALMADIM
+}
+
+/// Axtarış hadisəsi — hunidə 3-cü addım və "axtarışlar" KPI-sı üçün.
+///
+/// Hər sorğu bir sətir yazır. Həcm artanda bu cədvəl gündəlik aqreqata
+/// çevriləcək; hazırda MVP ölçüsündə birbaşa saymaq kifayətdir.
+model SearchEvent {
+  id          String   @id @default(cuid())
+  userId      String?  @map("user_id")
+  cityId      String?  @map("city_id")
+  query       String?  @db.VarChar(120)
+  resultCount Int      @map("result_count")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("search_events")
+}
+
+/// Monetizasiya məhsulları və qiymətləri.
+///
+/// Qiymətlər kodda sabitlənmir — admin gələcəkdə dəyişə bilsin deyə bazadadır.
+/// Bütün sətirlər `isActive = false` ilə seed olunur: ödəniş qoşulana qədər
+/// heç bir məhsul satışa çıxmır.
+model MonetizationProduct {
+  code         String   @id
+  nameAz       String   @map("name_az") @db.VarChar(120)
+  descriptionAz String? @map("description_az") @db.VarChar(400)
+  /// Qəpiklə. 3 AZN = 300.
+  priceQepik   Int      @map("price_qepik")
+  /// Neçə gün davam edir; abunələrdə 30.
+  durationDays Int      @map("duration_days")
+  /// Kimə aiddir: elan, ev sahibi hesabı və ya tələbə hesabı.
+  audience     ProductAudience
+  isActive     Boolean  @default(false) @map("is_active")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("monetization_products")
+}
+
+enum ProductAudience {
+  LISTING
+  OWNER
+  STUDENT
+}
+
+/// Audit jurnalı — hər admin əməliyyatı burada iz qoyur.
+///
+/// Moderasiya qərarları `ModerationAction`-da ayrıca saxlanılır (elan
+/// tarixçəsi kimi), amma bura HƏR əməliyyat düşür: bloklama, taksonomiya
+/// dəyişikliyi, şikayət həlli, təsdiq. "Kim, nə vaxt, nə etdi" sualına
+/// cavab tək yerdən verilir.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  action     String   @db.VarChar(80)
+  entityType String   @map("entity_type") @db.VarChar(40)
+  entityId   String   @map("entity_id")
+  /// Dəyişikliyin təfərrüatı: əvvəlki/yeni dəyər, səbəb və s.
+  meta       Json?
+  ip         String?  @db.VarChar(64)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// Moderasiya jurnalı — kim, nə vaxt, hansı qərarı verdi.
+/// Elan statusunun dəyişməsi heç vaxt izsiz qalmır (hesabatlılıq üçün).
+model ModerationAction {
+  id          String    @id @default(cuid())
+  listingId   String    @map("listing_id")
+  moderatorId String    @map("moderator_id")
+  action      ModAction
+  reason      String?   @db.VarChar(500)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  moderator User    @relation("ModerationActor", fields: [moderatorId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, createdAt])
+  @@index([moderatorId, createdAt])
+  @@map("moderation_actions")
+}
+
+enum ModAction {
+  APPROVE
+  REJECT
+  PAUSE
+  ARCHIVE
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  type      NotificationType
+  /// Tipə görə dəyişən məlumat: elan id-si, moderasiya səbəbi, uyğun elan sayı və s.
+  payload   Json?
+  readAt    DateTime?        @map("read_at")
+  /// E-poçt kanalı ilə göndərilib-göndərilmədiyi.
+  /// Push kanalı gələcək fazaya saxlanılıb — sahə əlavə olunanda migration
+  /// yalnız bir sütun olacaq, yenidənqurma tələb etməyəcək.
+  emailedAt DateTime?        @map("emailed_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  ELAN_TESDIQLENDI
+  ELAN_REDD_EDILDI
+  ELAN_MUDDETI_BITIR
+  YENI_UYGUN_ELAN
+  YENI_UYGUN_OTAQ_YOLDASI
+  ELAN_YENILENDI
+  QIYMET_DEYISDI
+  TELEFON_TESDIQLENDI
+  PROFIL_TESDIQLENDI
+  SIKAYET_NETICESI
+  SISTEM
+}
+
+/// Təsdiq axını: tələbə statusu, ev sahibi statusu, telefon nömrəsi.
+/// Telefon təsdiqi OtpCode axını ilə avtomatik VERIFIED olur;
+/// tələbə/ev sahibi təsdiqini admin verir.
+model Verification {
+  id          String             @id @default(cuid())
+  userId      String             @map("user_id")
+  type        VerificationType
+  status      VerificationStatus @default(PENDING)
+  /// Sənəd və ya sübut linki (tələbə bileti, mülkiyyət sənədi).
+  evidenceUrl String?            @map("evidence_url") @db.VarChar(600)
+  note        String?            @db.VarChar(500)
+  reviewedAt  DateTime?          @map("reviewed_at")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@index([status, type])
+  @@map("verifications")
+}
+
+enum VerificationType {
+  STUDENT
+  OWNER
+  PHONE
+}
+
+enum VerificationStatus {
+  NONE
+  PENDING
+  VERIFIED
+  REJECTED
+}

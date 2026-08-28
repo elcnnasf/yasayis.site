@@ -1,0 +1,36 @@
+{
+  "name": "yasayis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Yaşayış — tələbələr üçün yaşayış marketplace platforması",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "npm run dev --workspace=@yasayis/api",
+    "dev:web": "npm run dev --workspace=@yasayis/web",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "db:generate": "npm run generate --workspace=@yasayis/db",
+    "db:migrate": "npm run migrate --workspace=@yasayis/db",
+    "db:push": "npm run push --workspace=@yasayis/db",
+    "db:seed": "npm run seed --workspace=@yasayis/db",
+    "db:seed:demo": "npm run seed:demo --workspace=@yasayis/db --",
+    "db:studio": "npm run studio --workspace=@yasayis/db",
+    "db:migrate:remote": "node packages/db/scripts/apply-migration.mjs",
+    "db:migrate:remote:dry": "node packages/db/scripts/apply-migration.mjs --dry-run",
+    "lint:fix": "eslint . --fix"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.68.0"
+  }
+}

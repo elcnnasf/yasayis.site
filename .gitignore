@@ -1,0 +1,42 @@
+# --- Sirlər: heç vaxt commit olunmur ---
+.env
+.env.*
+!.env.example
+
+# --- Asılılıqlar ---
+node_modules/
+.npm/
+
+# --- Build çıxışları ---
+dist/
+build/
+.next/
+.next-audit/
+out/
+*.tsbuildinfo
+
+# --- Prisma ---
+packages/db/generated/
+prisma/*.db
+prisma/*.db-journal
+
+# --- Test / coverage ---
+coverage/
+.nyc_output/
+
+# --- Redaktor və OS ---
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Loglar ---
+*.log
+npm-debug.log*
+logs/
+
+# --- Yerli yükləmələr (dev) ---
+uploads/
+tmp/

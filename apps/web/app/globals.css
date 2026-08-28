@@ -1,0 +1,289 @@
+@import "tailwindcss";
+
+/* =============================================================================
+   Yaşayış — dizayn sistemi
+
+   İSTİQAMƏT
+   Palitra tək tonludur: brendin yaşılı və neytral kağız tonu. İkinci vurğu
+   rəngi qəsdən YOXDUR — dərinlik yaşılın öz çalarlarından (fon tinti, sərhəd,
+   kölgə) və tipoqrafiyadan gəlir. İki rəng qatmaq səhifəni "şablon" edir və
+   etibar hissini zəiflədir.
+
+   Neytral ton xalis boz deyil: içində zəif yaşıl var ki, brend rəngi ilə
+   yanaşı duranda "soyuq" görünməsin.
+
+   Qayda: komponentlərdə xam hex yazılmır — yalnız bu tokenlərdən istifadə olunur.
+   ========================================================================== */
+
+@theme {
+  /* --- Yaşıl: brendin əsas rəngi -----------------------------------------
+     Loqodakı tonun üzərində qurulub, amma daha dərin və az sarı — ekranda
+     "kənd təsərrüfatı" deyil, "etibarlı" oxunsun deyə.                      */
+  --color-forest-50: #eff7f2;
+  --color-forest-100: #d8ece1;
+  --color-forest-200: #b3d8c5;
+  --color-forest-300: #82bb9f;
+  --color-forest-400: #4d9a78;
+  --color-forest-500: #257c5a;
+  --color-forest-600: #14603f;
+  --color-forest-700: #0e4a31;
+  --color-forest-800: #0a3624;
+  --color-forest-900: #062318;
+
+  /* --- Açıq yaşıl: canlılıq, uyğunluq, aktiv hal -------------------------
+     Yalnız vurğu üçün. Böyük sahələrdə işlədilmir.                          */
+  --color-sprout-50: #f0fbf5;
+  --color-sprout-100: #dcf5e7;
+  --color-sprout-200: #b9e9cf;
+  --color-sprout-300: #8bd7b0;
+  --color-sprout-400: #5bc08e;
+  --color-sprout-500: #37a672;
+  --color-sprout-600: #268a5d;
+  --color-sprout-700: #1d6d4a;
+
+  /* --- Mürəkkəb: tünd səthlər -------------------------------------------
+     Navbar, hero və footer eyni tünd səthdən kəsilir — səhifə yuxarıdan və
+     aşağıdan eyni rəngə "bağlanır", ortadakı açıq məzmun isə onun içində
+     çərçivəyə alınmış kimi oxunur. Xalis qara deyil: içində yaşıl var ki,
+     brend rəngindən qopmasın.                                              */
+  --color-ink-900: #0b1e15;
+  --color-ink-800: #12291d;
+  --color-ink-700: #1b3728;
+
+  /* --- Neytral: kağız tonu, zəif yaşıl çalarla --------------------------- */
+  --color-stone-50: #fafbfa;
+  --color-stone-100: #f3f5f3;
+  --color-stone-200: #e6eae7;
+  --color-stone-300: #d2d8d4;
+  --color-stone-400: #a3aca7;
+  --color-stone-500: #78827c;
+  --color-stone-600: #576059;
+  --color-stone-700: #3d443f;
+  --color-stone-800: #262b28;
+  --color-stone-900: #141816;
+
+  /* --- Vəziyyət rəngləri: yalnız məna daşıyan yerlərdə -------------------
+     Tündləşdirilib ki, yaşılın yanında "ucuz" görünməsin.                   */
+  --color-danger-50: #fdf1ef;
+  --color-danger-100: #f9dcd7;
+  --color-danger-500: #b4422f;
+  --color-danger-600: #97331f;
+  --color-warning-50: #fdf6e9;
+  --color-warning-100: #f7e9cd;
+  --color-warning-500: #a4761a;
+  --color-warning-600: #855e0f;
+
+  /* --- Tipoqrafiya ------------------------------------------------------
+     İki ailə: başlıqlar üçün xarakterli serif, interfeys üçün təmiz sans.
+     Serif "ev, isti, etibar" hissini daşıyır; sans oxunaqlılığı saxlayır.
+     Şkala mobil-first-dir — clamp() ilə kiçik ekranda özü azalır.           */
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-fraunces), var(--font-jakarta), Georgia, serif;
+
+  --text-display: clamp(2.25rem, 1.5rem + 3.4vw, 3.75rem);
+  --text-display--line-height: 1.04;
+  --text-display--letter-spacing: -0.022em;
+  --text-display--font-weight: 600;
+
+  --text-h1: clamp(1.75rem, 1.35rem + 1.9vw, 2.5rem);
+  --text-h1--line-height: 1.12;
+  --text-h1--letter-spacing: -0.018em;
+  --text-h1--font-weight: 600;
+
+  --text-h2: clamp(1.3rem, 1.13rem + 0.8vw, 1.625rem);
+  --text-h2--line-height: 1.22;
+  --text-h2--letter-spacing: -0.014em;
+  --text-h2--font-weight: 600;
+
+  --text-h3: 1.0625rem;
+  --text-h3--line-height: 1.4;
+  --text-h3--letter-spacing: -0.006em;
+  --text-h3--font-weight: 700;
+
+  --text-lead: 1.0625rem;
+  --text-lead--line-height: 1.65;
+
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.62;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.05rem;
+
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1rem;
+  --text-label--letter-spacing: 0.1em;
+  --text-label--font-weight: 700;
+
+  /* --- Künclər ----------------------------------------------------------
+     İti tərəfə çəkilib. Böyük radius kartı "yumşaq, oyuncaq" göstərir və
+     marketplace-in ciddiliyini azaldır; 14px isə hələ də isti qalır, amma
+     məhsul kimi oxunur. Yalnız çip tam yuvarlaqdır — orada forma etiketin
+     özüdür.                                                                */
+  --radius-card: 0.875rem;
+  --radius-panel: 1rem;
+  --radius-input: 0.625rem;
+  --radius-chip: 999px;
+
+  /* --- Kölgələr ---------------------------------------------------------
+     Kölgə qara deyil, yaşıla çalır: neytral qara kölgə səhifəni "çirkli"
+     göstərir, çünki fon da yaşıla çalır.                                    */
+  --shadow-xs: 0 1px 2px rgb(6 35 24 / 0.05);
+  --shadow-card: 0 1px 2px rgb(6 35 24 / 0.04), 0 6px 20px -8px rgb(6 35 24 / 0.1);
+  --shadow-card-hover: 0 2px 6px rgb(6 35 24 / 0.06),
+    0 16px 34px -12px rgb(6 35 24 / 0.16);
+  --shadow-pop: 0 10px 40px -10px rgb(6 35 24 / 0.22);
+  --shadow-nav: 0 -1px 0 rgb(6 35 24 / 0.06), 0 -10px 30px -12px rgb(6 35 24 / 0.1);
+
+  /* --- Ölçülər --------------------------------------------------------- */
+  --spacing-header: 4.25rem;
+  --spacing-bottom-nav: 4.25rem;
+}
+
+/* =============================================================================
+   Semantik təbəqə
+   ========================================================================== */
+
+:root {
+  --bg: var(--color-stone-50);
+  --surface: #ffffff;
+  --surface-tinted: var(--color-forest-50);
+  --border: var(--color-stone-200);
+  --border-strong: var(--color-stone-300);
+  --fg: var(--color-stone-900);
+  --fg-muted: var(--color-stone-600);
+  --fg-subtle: var(--color-stone-500);
+  --primary: var(--color-forest-600);
+  --primary-hover: var(--color-forest-700);
+  --accent: var(--color-sprout-600);
+  --ring: var(--color-sprout-500);
+}
+
+/* =============================================================================
+   Baza
+   ========================================================================== */
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Başlıqlar serif ailəni avtomatik alır — hər komponentdə təkrar yazılmasın. */
+h1,
+h2,
+.font-display {
+  font-family: var(--font-display);
+  font-variation-settings: "SOFT" 0, "WONK" 0;
+}
+
+/* Uzun başlıq sətirlərini bərabər bölür. */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+/* Klaviatura ilə naviqasiya həmişə görünən olmalıdır. */
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Rəqəm sütunları (qiymət, uyğunluq faizi) düzülsün. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* iPhone-un aşağı jest zolağı bottom navigation-ı örtməsin. */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/**
+ * Səhifə bölmələrinin ritmi.
+ * Hər bölmədə `py-14` yazmaq əvəzinə tək sinif — boşluq bir yerdən idarə olunur.
+ */
+.section {
+  padding-block: clamp(2.5rem, 1.5rem + 3vw, 4.5rem);
+}
+
+.section-tight {
+  padding-block: clamp(1.75rem, 1.2rem + 2vw, 3rem);
+}
+
+/** Açıq bölmələr üçün yumşaq yaşıl keçid. */
+.wash {
+  background-image: radial-gradient(
+      120% 90% at 12% 0%,
+      var(--color-forest-50) 0%,
+      transparent 62%
+    ),
+    radial-gradient(90% 70% at 100% 0%, var(--color-sprout-50) 0%, transparent 58%);
+}
+
+/**
+ * Hero-nun tünd fonu.
+ *
+ * Düz rəng deyil: sağ yuxarıdan gələn çox zəif yaşıl işıq səthi "yastı"
+ * olmaqdan çıxarır. Qradiyent qəsdən zəifdir — gözlə güclə seçilir; güclü
+ * qradiyent 2015-in SaaS şablonu kimi oxunur.
+ */
+.ink {
+  background-color: var(--color-ink-900);
+  background-image: radial-gradient(
+    75% 120% at 88% 0%,
+    rgb(55 166 114 / 0.16) 0%,
+    transparent 62%
+  );
+}
+
+/**
+ * Hero-nun sağ tərəfindəki nöqtə toru — dekorativ dərinlik.
+ * Çox solğundur ki, üstündəki məhsul önizləməsi ilə yarışmasın.
+ */
+.dot-grid {
+  background-image: radial-gradient(rgb(255 255 255 / 0.09) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/** İncə üst sərhəd — düz xətt əvəzinə solub itən. */
+.hairline {
+  border-top: 1px solid transparent;
+  border-image: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-stone-200) 15%,
+      var(--color-stone-200) 85%,
+      transparent
+    )
+    1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
