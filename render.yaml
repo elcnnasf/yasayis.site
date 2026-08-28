@@ -71,8 +71,14 @@ services:
 
       - key: PUBLIC_URL
         value: https://api.yasayis.site
+      # HƏR İKİ ünvan sadalanır — vergüllə ayrılır (`main.ts` onu bölür).
+      #
+      # Sayt həm `yasayis.site`, həm `www.yasayis.site` üzərindən açıla bilir.
+      # Brauzer üçün bunlar FƏRQLİ origin-lərdir: yalnız birini icazə siyahısına
+      # salsaq, digərindən gələn hər sorğu bloklanır və istifadəçi "serverlə
+      # əlaqə alınmadı" görür — halbuki server tam sağlamdır.
       - key: CORS_ORIGIN
-        value: https://yasayis.site
+        value: https://yasayis.site,https://www.yasayis.site
 
       # --- Aşağıdakılar SİRDİR: Render panelində əl ilə doldurulur ---
       # `sync: false` = fayla yazılmır, Render sizdən soruşur.
