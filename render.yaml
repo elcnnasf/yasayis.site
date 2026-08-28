@@ -28,6 +28,16 @@ services:
     healthCheckPath: /api/v1/health
 
     envVars:
+      # Node versiyası AÇIQ sabitlənir.
+      #
+      # `package.json`-dakı `engines` bir ARALIQDIR (">=20.11") — host ondan
+      # dəqiq versiya çıxara bilmir və öz standartını seçir. Standart versiya
+      # layihənin işlədiyindən köhnə olanda build anlaşılmaz sintaksis xətası
+      # ilə dayanır. Kökdəki `.node-version` faylı da eyni dəyəri saxlayır:
+      # host hansını oxuyursa oxusun, nəticə eynidir.
+      - key: NODE_VERSION
+        value: 22.11.0
+
       - key: NODE_ENV
         value: production
 

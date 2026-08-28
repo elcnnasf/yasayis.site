@@ -9,9 +9,6 @@
     "dist",
     "prisma"
   ],
-  "engines": {
-    "node": ">=20.11"
-  },
   "scripts": {
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
