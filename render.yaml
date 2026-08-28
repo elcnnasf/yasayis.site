@@ -21,7 +21,16 @@ services:
     region: frankfurt # Supabase eu-west-1-dədir; yaxın region gecikməni azaldır
 
     # Kökdən qurulur: workspace paketləri bir-birindən asılıdır.
-    buildCommand: npm ci && npm run build:api
+    #
+    # `--include=dev` MƏCBURİDİR və səbəbi incədir:
+    # aşağıda `NODE_ENV=production` təyin olunub (tətbiqin iş rejimi üçün
+    # doğrudur), amma npm bu dəyişəni görəndə devDependencies-i quraşdırmır.
+    # Build alətlərinin özü isə məhz oradadır — `@nestjs/cli`, `typescript`,
+    # `prisma`. Onlarsız build "nest: not found" ilə dayanır (exit 127).
+    #
+    # Bayraq yalnız QURAŞDIRMAYA aiddir; tətbiq işə düşəndə `NODE_ENV`
+    # yenə `production` olaraq qalır.
+    buildCommand: npm ci --include=dev && npm run build:api
     startCommand: npm run start:api
 
     # Render `/` ünvanına sorğu atır; bizdə isə marşrut prefiksi var.
